@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>signaliduna</groupId>
+  <artifactId>SqlClipboardFormatter</artifactId>
+  <version>0.1</version>
+  <packaging>jar</packaging>
+
+  <name>SQL Clipboard Formatter</name>
+  <description>SQL-Formatter fuer die Zwischenablage</description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.compiler.release>17</maven.compiler.release>
+    <junit.version>5.10.2</junit.version>
+    <sqlformatter.version>2.0.5</sqlformatter.version>
+  </properties>
+
+  <dependencies>
+    <!-- Java-Port von https://github.com/sql-formatter-org/sql-formatter (MIT).
+         Liefert die eigentliche Best-Practice-Formatierung: Klauseln in eigene
+         Zeilen, SELECT-Listen untereinander, korrekte Klammereinrueckung.
+         Zur Laufzeit ohne Abhaengigkeiten, alle weiteren Dependencies im POM sind
+         test-scoped. -->
+    <dependency>
+      <groupId>com.github.vertical-blank</groupId>
+      <artifactId>sql-formatter</artifactId>
+      <version>${sqlformatter.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.0</version>
+        <configuration>
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <!-- FormatterPanelTest braucht AWT-Classes, aber keinen Bildschirm.
+               headless=true laesst die Panel-Tests laufen und schuetzt zugleich
+               ClipboardService vor einer echten Zwischenablage. -->
+          <systemPropertyVariables>
+            <java.awt.headless>true</java.awt.headless>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>signaliduna.SqlClipboardFormatter</mainClass>
+            </manifest>
+            <manifestEntries>
+              <!-- Damit FormatterPanel.version() die Version aus dem Manifest liest,
+                   statt auf den Fallback zurueckzufallen. -->
+              <Implementation-Version>${project.version}</Implementation-Version>
+              <Implementation-Title>${project.name}</Implementation-Title>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <!-- Ohne das bricht das ausgelieferte Jar zur Laufzeit mit
+                   NoClassDefFoundError: com.github.vertical_blank.sqlformatter.
+                   Die App wird per "java -jar" gestartet, hat also keinen
+                   Classpath, den Maven ihr mitgeben koennte. -->
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>signaliduna.SqlClipboardFormatter</mainClass>
+                  <manifestEntries>
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                    <Implementation-Title>${project.name}</Implementation-Title>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <!-- Signaturen passen nach dem Zusammenfuehren nicht mehr,
+                         und die Bibliothek ist nicht einmal signiert. -->
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>module-info.class</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

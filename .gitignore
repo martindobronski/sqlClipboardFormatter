@@ -1,0 +1,27 @@
+# Build-Output
+target/
+out/
+build/
+*.class
+*.jar
+
+# IntelliJ: Modul- und Artifact-Dateien werden beim Maven-Import erzeugt.
+# Wichtig: .idea/ selbst darf NICHT als Verzeichnis ausgeschlossen werden,
+# sonst greifen die Ausnahmen unten nicht - Git steigt in ausgeschlossene
+# Verzeichnisse nicht ab, eine neue Datei in .idea/artifacts/ waere sonst ignoriert.
+*.iml
+.idea/modules.xml
+.idea/artifacts/
+.idea/workspace.xml
+.idea/vcs.xml
+.idea/shelf/
+.idea/usage.statistics.xml
+.idea/dictionaries/
+.idea/sonarlint/
+.idea/inspectionProfiles/
+
+# Geteilte IDE-Konfiguration bleibt versioniert
+!.idea/.gitignore
+!.idea/misc.xml
+
+.DS_Store
