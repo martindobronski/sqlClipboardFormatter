@@ -471,4 +471,74 @@ class SqlPrettyFormatterTest {
             assertEquals(once, twice, "nicht idempotent fuer: " + sql);
         }
     }
+
+    @Nested
+    @DisplayName("Zeilenenden")
+    class Zeilenenden {
+
+        @Test
+        @DisplayName("CRLF-Eingabe kommt als CRLF zurueck")
+        void crlf_bleibt_crlf() {
+            String aus = SqlPrettyFormatter.format("select a\r\nfrom t\r\nwhere x=1",
+                    SqlDialect.STANDARD).sql();
+            assertTrue(aus.contains("\r\n"), "CRLF ging verloren: " + zeigbar(aus));
+            assertFalse(aus.replace("\r\n", "").contains("\n"), "gemischt: " + zeigbar(aus));
+        }
+
+        @Test
+        @DisplayName("LF-Eingabe bleibt LF")
+        void lf_bleibt_lf() {
+            String aus = SqlPrettyFormatter.format("select a\nfrom t", SqlDialect.STANDARD).sql();
+            assertFalse(aus.contains("\r"), "es kam CRLF heraus: " + zeigbar(aus));
+        }
+
+        @Test
+        @DisplayName("der Fallback behaelt CRLF ebenfalls")
+        void fallback_behaelt_crlf() {
+            // E'\x' nimmt den Library-Pfad aus, der Fallback liefert.
+            String aus = SqlPrettyFormatter.format("select a\r\nfrom t where b=E'x'",
+                    SqlDialect.STANDARD).sql();
+            assertTrue(aus.contains("\r\n"), "Fallback hat CRLF verloren: " + zeigbar(aus));
+        }
+
+        @Test
+        @DisplayName("bei gemischten Eingaben gewinnt die Mehrheit")
+        void gemischt_entscheidet_mehrheit() {
+            String aus = SqlPrettyFormatter.format("select a\r\nfrom t\nwhere x=1",
+                    SqlDialect.STANDARD).sql();
+            assertTrue(aus.contains("\r\n"), "Mehrheit war CRLF: " + zeigbar(aus));
+        }
+
+        @Test
+        @DisplayName("CRLF-Zeilenenden aendern die Zeilenzahl nicht")
+        void crlf_aendert_zeilenzahl_nicht() {
+            String ein = "select a\r\nfrom t\r\nwhere x=1";
+            String lf = SqlPrettyFormatter.format(ein.replace("\r\n", "\n"), SqlDialect.STANDARD).sql();
+            String crlf = SqlPrettyFormatter.format(ein, SqlDialect.STANDARD).sql();
+            assertEquals(zeilen(lf), zeilen(crlf), "Zeilenzahl muss gleich bleiben");
+            assertEquals(lf, crlf.replace("\r\n", "\n"), "Inhalt muss gleich bleiben");
+        }
+
+        @Test
+        @DisplayName("zweimal Formatieren ist stabil")
+        void wiederholte_formatierung_stabil() {
+            String einmal = SqlPrettyFormatter.format("select a\r\nfrom t", SqlDialect.STANDARD).sql();
+            String zweimal = SqlPrettyFormatter.format(einmal, SqlDialect.STANDARD).sql();
+            assertEquals(einmal, zweimal, "nicht idempotent: " + zeigbar(zweimal));
+        }
+
+        private int zeilen(String text) {
+            int n = 0;
+            for (int i = 0; i < text.length(); i++) {
+                if (text.charAt(i) == '\n') {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        private String zeigbar(String text) {
+            return text.replace("\r", "\\r").replace("\n", "\\n");
+        }
+    }
 }

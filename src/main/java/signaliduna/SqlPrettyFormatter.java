@@ -293,10 +293,46 @@ final class SqlPrettyFormatter {
             notice = "Dialekt '%s' aendert diesen Text nicht.".formatted(requested.label());
         }
 
-        return new Result(formatted, true, notice);
+        return new Result(mitZeilenendenVon(raw, formatted), true, notice);
     }
 
     private static Result conservative(String raw, String notice) {
-        return new Result(SqlFormatService.format(raw), false, notice);
+        return new Result(mitZeilenendenVon(raw, SqlFormatService.format(raw)), false, notice);
+    }
+
+    /**
+     * Gibt dem Ergebnis die Zeilenenden der Eingabe zurueck.
+     *
+     * <p>Die Library und der Fallback arbeiten mit {@code \n}. Auf Windows ist
+     * CRLF aber der Normalfall: ein aus der Zwischenablage gelesenes
+     * {@code .sql}-Skript hat es, und ohne diesen Schritt kaeme es als
+     * gemischte oder reine LF-Datei zurueck. Das waere eine Aenderung an der
+     * Datei, die niemand angefordert hat, und wuerde beim erneuten Einlesen
+     * sichtbar.
+     *
+     * <p>Gezählt wird nur {@code \r\n}, nicht jedes {@code \r}: ein einzelnes
+     * {@code \r} in einem Literal ist Text, kein Zeilenende, und wuerde bei
+     * einem unsichtbaren Umbruch zu {@code \r\r\n} aufgeblaeht.
+     *
+     * @return der Text mit den Zeilenenden der Eingabe
+     */
+    private static String mitZeilenendenVon(String raw, String text) {
+        if (text.indexOf('\n') < 0) {
+            return text;
+        }
+        int crlf = 0;
+        int zeilen = 0;
+        for (int i = 0; i < raw.length(); i++) {
+            if (raw.charAt(i) == '\n') {
+                zeilen++;
+                if (i > 0 && raw.charAt(i - 1) == '\r') {
+                    crlf++;
+                }
+            }
+        }
+        if (zeilen == 0 || crlf * 2 < zeilen) {
+            return text;
+        }
+        return text.replace("\n", "\r\n");
     }
 }
