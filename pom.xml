@@ -18,6 +18,7 @@
     <maven.compiler.release>17</maven.compiler.release>
     <junit.version>5.10.2</junit.version>
     <sqlformatter.version>2.0.5</sqlformatter.version>
+    <flatlaf.version>3.2.5</flatlaf.version>
   </properties>
 
   <dependencies>
@@ -30,6 +31,17 @@
       <groupId>com.github.vertical-blank</groupId>
       <artifactId>sql-formatter</artifactId>
       <version>${sqlformatter.version}</version>
+    </dependency>
+
+    <!-- Look and Feel fuer beide Themes. Ohne das muesste jedes einzelne
+         Swing-Element selbst bemalt werden (Buttons, Combobox, Scrollbalken),
+         und das Ergebnis saehe schlechter aus als die fertigen FlatLaf-Themes.
+         Dark und Light sind getrennt schaltbar, beide ohne weitere
+         Laufzeitabhaengigkeiten. -->
+    <dependency>
+      <groupId>com.formdev</groupId>
+      <artifactId>flatlaf</artifactId>
+      <version>${flatlaf.version}</version>
     </dependency>
 
     <dependency>

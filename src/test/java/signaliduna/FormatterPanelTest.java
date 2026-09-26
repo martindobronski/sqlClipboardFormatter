@@ -9,16 +9,31 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JTextArea;
+import javax.swing.text.JTextComponent;
+import javax.swing.JTextPane;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
+import javax.swing.UIManager;
+
+import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.FlatLightLaf;
 import java.awt.Color;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
+import java.awt.BorderLayout;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FormatterPanelTest {
 
     private FormatterPanel panel;
-    private JTextArea sqlArea;
+    private JTextComponent sqlArea;
     private JButton readButton;
     private JButton formatButton;
     private JButton writeButton;
@@ -46,6 +61,9 @@ class FormatterPanelTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // Das aktive Theme ist statisch; ohne Zuruecksetzen haengt jeder Test
+        // vom zuletzt gelaufenen Theme-Test ab.
+        FormatterPanel.setzeTheme(Theme.DUNKEL);
         panel = new FormatterPanel();
         sqlArea = field("sqlArea");
         readButton = field("readButton");
@@ -419,23 +437,32 @@ class FormatterPanelTest {
     class BeendenButton {
 
         @Test
-        void beschriftung_und_farbe() {
+        @DisplayName("ist ein Textlink ohne eigene Flaeche, kein roter Kasten")
+        void ist_als_textlink_gesetzt() {
             assertEquals("Beenden", exitButton.getText());
-            assertEquals(new Color(0xB23C32), exitButton.getBackground());
-            assertEquals(Color.WHITE, exitButton.getForeground());
+            // Vorher: rote, gefuellte Flaeche - dieselbe visuelle Gewichtung
+            // wie "Ins Clipboard schreiben", obwohl es nichts mit dem
+            // SQL-Text zu tun hat.
+            assertFalse(exitButton.isContentAreaFilled(), "Beenden darf keine Flaeche malen");
+            assertEquals(new Color(0x9AA4B0), exitButton.getForeground());
         }
 
         @Test
-        @DisplayName("steht als vierter Button rechts von den drei Aktionen")
-        void steht_rechts_als_vierter() {
-            assertInstanceOf(GridBagLayout.class, exitButton.getParent().getLayout());
-            GridBagConstraints gbc = ((GridBagLayout) exitButton.getParent().getLayout())
-                    .getConstraints(exitButton);
-            GridBagConstraints readGbc = ((GridBagLayout) exitButton.getParent().getLayout())
-                    .getConstraints(readButton);
+        @DisplayName("steht abgesetzt rechts, nicht in der Aktionsgruppe")
+        void steht_abgesetzt_rechts_der_aktionsgruppe() {
+            // Die drei Aktionen teilen sich eine eigene Flaeche, "Beenden"
+            // sitzt rechts in einer zweiten. Sonst laesst es sich nicht
+            // optisch von ihnen trennen.
+            assertNotSame(exitButton.getParent(), readButton.getParent(),
+                    "Beenden darf nicht in derselben Gruppe liegen wie die Aktionen");
 
-            assertEquals(3, gbc.gridx, "Beenden muss Spalte 3 (vierte) sein");
-            assertEquals(0, readGbc.gridx);
+            // Geometrie statt Struktur: mass, ob es wirklich rechts klebt.
+            JPanel reihe = (JPanel) exitButton.getParent();
+            assertInstanceOf(BorderLayout.class, reihe.getLayout());
+            reihe.setSize(800, 40);
+            reihe.doLayout();
+            assertTrue(exitButton.getX() + exitButton.getWidth() >= 780,
+                    "Beenden muss an der rechten Kante stehen, lag bei x=" + exitButton.getX());
         }
 
         @Test
@@ -535,19 +562,28 @@ class FormatterPanelTest {
             sqlArea.setText("Einkaufsliste");
             assertFalse(formatButton.isEnabled());
 
-            assertEquals(new Color(0x505050), formatButton.getForeground());
-            assertEquals(new Color(0xD6D6D6), formatButton.getBackground());
+            assertEquals(new Color(0x2A2E34), formatButton.getBackground());
+            assertEquals(new Color(0x9AA4B0), formatButton.getForeground());
             // Vorher: weisse Schrift auf LIGHT_GRAY = 1,82:1
             assertTrue(contrast(formatButton.getBackground(), formatButton.getForeground()) > 4.5,
                     "Kontrast muss WCAG AA (4.5:1) erfuellen");
         }
 
         @Test
-        void aktive_buttons_tragen_ihre_farbe_mit_weisser_schrift() {
+        @DisplayName("nur die Hauptaktion traegt die Akzentfarbe, die anderen bleiben grau")
+        void nur_die_hauptaktion_ist_akzentiert() {
             sqlArea.setText("select 1");
 
-            assertEquals(new Color(0x2E8B57), formatButton.getBackground());
+            assertEquals(new Color(0x1D4ED8), formatButton.getBackground());
             assertEquals(Color.WHITE, formatButton.getForeground());
+
+            // Vorher jede Schaltflaeche in einer eigenen Farbe (Blau/Gruen/
+            // Orange/Rot). Grau ist hier Absicht: die Farbe benennt die
+            // Hauptaktion, nicht die Funktion.
+            assertEquals(new Color(0x31363C), readButton.getBackground());
+            assertEquals(new Color(0x31363C), writeButton.getBackground());
+            assertEquals(readButton.getBackground(), writeButton.getBackground(),
+                    "Einlesen und Schreiben teilen sich dieselbige Sekundaerfarbe");
         }
 
         @Test
@@ -556,6 +592,284 @@ class FormatterPanelTest {
             assertEquals("SQL Formatieren", formatButton.getText());
             assertEquals("Ins Clipboard schreiben", writeButton.getText());
         }
+    }
+
+    @Nested
+    @DisplayName("Themes")
+    class Themes {
+
+        @Test
+        @DisplayName("beide Paletten erfuellen WCAG AA fuer jedes Textpaar")
+        void beide_paletten_erfuellen_wcag_aa() {
+            List<String> maengel = new ArrayList<>();
+            for (Theme theme : List.of(Theme.DUNKEL, Theme.HELL)) {
+                // Text auf Fensterflaeche
+                pruefe(theme, theme.text, theme.hintergrund, "Text", maengel);
+                pruefe(theme, theme.gedaempft, theme.hintergrund, "gedaempft", maengel);
+                pruefe(theme, theme.erfolg, theme.hintergrund, "Erfolg", maengel);
+                pruefe(theme, theme.warnung, theme.hintergrund, "Warnung", maengel);
+                pruefe(theme, theme.fehler, theme.hintergrund, "Fehler", maengel);
+                // Beschriftung auf Schaltflaeche
+                pruefe(theme, theme.aufAkzent, theme.akzent, "Beschriftung Akzent", maengel);
+                pruefe(theme, theme.aufSekundaer, theme.sekundaer, "Beschriftung sekundaer", maengel);
+                pruefe(theme, theme.aufDeaktiviert, theme.deaktiviert, "Beschriftung gesperrt", maengel);
+                // Syntaxfarben auf der Editorflaeche
+                pruefe(theme, theme.keyword, theme.flaeche, "Keyword", maengel);
+                pruefe(theme, theme.stringFarbe, theme.flaeche, "String", maengel);
+                pruefe(theme, theme.zahl, theme.flaeche, "Zahl", maengel);
+                pruefe(theme, theme.kommentar, theme.flaeche, "Kommentar", maengel);
+                pruefe(theme, theme.bezeichner, theme.flaeche, "Bezeichner", maengel);
+                pruefe(theme, theme.operator, theme.flaeche, "Operator", maengel);
+            }
+            assertTrue(maengel.isEmpty(), () -> "Kontrast unter WCAG AA: " + maengel);
+        }
+
+        private void pruefe(Theme theme, Color fg, Color bg, String was, List<String> maengel) {
+            double r = contrast(fg, bg);
+            if (r <= 4.5) {
+                maengel.add(theme.bezeichnung() + "/" + was + "=" + String.format("%.2f", r));
+            }
+        }
+
+        @Test
+        @DisplayName("Umschalter tauscht LookAndFeel und Farben")
+        void umschalter_tauscht_lookandfeel_und_farben() throws Exception {
+            JButton themeButton = field("themeButton");
+            // Fuelltext noetig: ohne SQL ist der Formatier-Button gesperrt und
+            // traegt die Farbe fuer deaktiviert statt die Akzentfarbe.
+            sqlArea.setText("select 1");
+            assertInstanceOf(FlatDarkLaf.class, UIManager.getLookAndFeel());
+            assertEquals(Theme.DUNKEL.akzent, formatButton.getBackground());
+
+            aufEdt(themeButton::doClick);
+
+            assertInstanceOf(FlatLightLaf.class, UIManager.getLookAndFeel());
+            assertEquals(Theme.HELL.akzent, formatButton.getBackground());
+            assertEquals(Theme.HELL.hintergrund, panel.getBackground());
+        }
+
+        @Test
+        @DisplayName("Umschalten ist umkehrbar")
+        void umschalten_ist_umkehrbar() throws Exception {
+            JButton themeButton = field("themeButton");
+            sqlArea.setText("select 1");
+            aufEdt(themeButton::doClick);
+            aufEdt(themeButton::doClick);
+            assertInstanceOf(FlatDarkLaf.class, UIManager.getLookAndFeel());
+            assertEquals(Theme.DUNKEL.akzent, formatButton.getBackground());
+        }
+
+        @Test
+        @DisplayName("der Schalter benennt das Ziel, nicht den Zustand")
+        void schalter_benennt_das_ziel() throws Exception {
+            JButton themeButton = field("themeButton");
+            assertTrue(themeButton.getText().contains("Hell"),
+                    "im dunklen Theme muss der Schalter zum hellen Theme fuehren");
+            assertNotNull(themeButton.getToolTipText());
+        }
+    }
+
+    @Nested
+    @DisplayName("Syntaxhervorhebung")
+    class Hervorhebung {
+
+        @Test
+        void keywords_werden_eingefaerbt() {
+            faerbe("select id from users");
+            assertEquals(Theme.DUNKEL.keyword, farbeAn("select"));
+            assertEquals(Theme.DUNKEL.keyword, farbeAn("from"));
+        }
+
+        @Test
+        @DisplayName("ein Keyword in einer Zeichenkette wird nicht eingefaerbt")
+        void keyword_in_zeichenkette_bleibt_ungefaerbt() {
+            // Der Grund, warum es den ausgelagerten Scanner gibt: eine
+            // Regex-Eigenloesung wuerde hier faerben und sofort billig aussehen.
+            faerbe("where name = 'bitte select one' and x = 1");
+            assertEquals(Theme.DUNKEL.stringFarbe, farbeAn("select", ab("bitte") + 7),
+                    "select innerhalb des Literals ist Text, kein Keyword");
+            assertEquals(Theme.DUNKEL.keyword, farbeAn("where"));
+        }
+
+        @Test
+        @DisplayName("ein Keyword in einem Kommentar wird nicht eingefaerbt")
+        void keyword_im_kommentar_bleibt_ungefaerbt() {
+            faerbe("-- select ist hier nur Text\nselect 1");
+            assertEquals(Theme.DUNKEL.kommentar, farbeAn("select"),
+                    "das select im Kommentar");
+            int nachKommentar = ab("select", ab("\n") + 1);
+            assertEquals(Theme.DUNKEL.keyword, farbeAn("select", nachKommentar),
+                    "das select hinter dem Kommentar");
+        }
+
+        @Test
+        @DisplayName("Kommentare sind zusaetzlich kursiv")
+        void kommentare_sind_kursiv() {
+            faerbe("select 1 -- notiz");
+            assertTrue(kursivAn("-- notiz"));
+        }
+
+        @Test
+        void strings_und_bezeichner_haben_unterschiedliche_farben() {
+            faerbe("select \"spalte\" from 'tabelle'");
+            assertEquals(Theme.DUNKEL.bezeichner, farbeAn("\"spalte\""));
+            assertEquals(Theme.DUNKEL.stringFarbe, farbeAn("'tabelle'"));
+        }
+
+        @Test
+        void zahlen_haben_eigene_farbe() {
+            faerbe("select 1 from t where x = 3.5e2");
+            assertEquals(Theme.DUNKEL.zahl, farbeAn("3.5e2"), "Exponent muss mitgefaerbt werden");
+        }
+
+        @Test
+        @DisplayName("dieselbe Zerlegung wie der Formatter: jedes seiner Keywords wird auch gefaehrt")
+        void keywords_stimmen_mit_dem_formatter_ueberein() {
+            // Drift-Wache: faellt ein Keyword aus dem Formatter weg, faellt es
+            // hier auf, statt still ungefaerbt zu bleiben.
+            Set<String> woerter = new HashSet<>();
+            Matcher m = Pattern.compile("[a-z]{3,}").matcher(SqlFormatService.KEYWORDS.pattern());
+            while (m.find()) {
+                woerter.add(m.group());
+            }
+            assertFalse(woerter.isEmpty(), "Keyword-Muster des Formatierers ausgewertet");
+            List<String> fehlen = woerter.stream()
+                    .filter(w -> !SqlSyntaxHighlighter.keywords().contains(w))
+                    .sorted()
+                    .toList();
+            assertTrue(fehlen.isEmpty(), () -> "Im Highlighter fehlen: " + fehlen);
+        }
+
+        @Test
+        @DisplayName("Einfaerben loest keine weiteren Aenderungs-Events aus")
+        void einfaerben_erzeugt_keine_ereignisschleife() throws Exception {
+            // setCharacterAttributes feuert selbst Dokument-Events. Ohne
+            // Reentranz-Sperre laeuft daraus ein Endlos-Zyklus, der zugleich
+            // den Dialekt-Timer verhungern laesst.
+            faerbe("select a, b from t where c = 1 -- x");
+            Timer highlightTimer = field("highlightTimer");
+            Timer dialectTimer = field("dialectTimer");
+            // Nur den Entprell-Timer abklingen lassen: er wiederholt sich nicht.
+            // Der Dialekt-Timer wiederholt sich und laeuft daher dauerhaft.
+            for (int i = 0; i < 100 && highlightTimer.isRunning(); i++) {
+                Thread.sleep(20);
+            }
+
+            // setCharacterAttributes feuert technisch weiter Dokument-Events an
+            // alle Listener - das laesst sich nicht unterdruecken und ist
+            // unschadlich. Zaehlbar ist die Wirkung: das Panel darf sich nicht
+            // erneut einplanen, sonst laeuft es im Kreis und der
+            // Dialekt-Timer verhungert.
+            panel.faerbeHoch();
+            assertFalse(highlightTimer.isRepeats(),
+                    "Einfaerben muss entprellt werden, nicht wiederholt");
+            assertFalse(highlightTimer.isRunning(),
+                    "Einfaerben hat sich selbst wieder eingeplant - Endlosschleife");
+            // Ohne die Sperre wuerde hier der Dialekt-Timer im 120-ms-Takt
+            // zurueckgesetzt und seine 300 ms nie erreichen: die
+            // Wirkungsanzeige bliebe fuer immer auf "—".
+            assertTrue(dialectTimer.isRepeats());
+        }
+
+        @Test
+        @DisplayName("das Textfeld bricht nicht um und bleibt kompakt")
+        void textfeld_bricht_nicht_um_und_bleibt_kompakt() {
+            JTextPane pane = (JTextPane) sqlArea;
+            assertFalse(pane.getScrollableTracksViewportWidth(),
+                    "SQL soll nicht umbrechen - ein umgebrochener Schluessel ist nicht lesbar");
+            // Vorher PreferredSize 760x420, daraus pack() ein 626 px hohes Fenster.
+            assertTrue(pane.getPreferredSize().height < 320,
+                    "Textfeld ist " + pane.getPreferredSize().height
+                            + " px hoch und laesst die halbe Leere im Fenster");
+        }
+    }
+
+    @Nested
+    @DisplayName("Statusmeldungen als Toast")
+    class Toast {
+
+        @Test
+        @DisplayName("Erfolg blendet sich aus, Warnung bleibt stehen")
+        void erfolg_blendet_sich_aus_warnung_bleibt() throws Exception {
+            Timer toastTimer = field("toastTimer");
+
+            sqlArea.setText("Einkaufsliste");
+            assertTrue(statusLabel.getText().startsWith("\u26a0"), "Text sieht nicht nach SQL aus");
+            assertFalse(toastTimer.isRunning(),
+                    "eine blockierende Warnung darf nicht von selbst verschwinden");
+
+            sqlArea.setText("select 1");
+            formatButton.doClick();
+            warteAufErgebnis();
+            assertTrue(statusLabel.getText().startsWith("\u2713"), statusLabel.getText());
+            assertTrue(toastTimer.isRunning(), "Erfolg soll ausblenden");
+            assertFalse(toastTimer.isRepeats(), "Toast darf nicht wiederholen");
+            assertEquals(4000, toastTimer.getDelay(), "Toast-Frist");
+        }
+
+        @Test
+        @DisplayName("die Erfolgsmeldung verschwindet wieder")
+        void erfolgsmeldung_verschwindet() throws Exception {
+            Timer toastTimer = field("toastTimer");
+            sqlArea.setText("select 1");
+            formatButton.doClick();
+            warteAufErgebnis();
+            assertFalse(statusLabel.getText().isEmpty());
+
+            // Echter Timer mit echter Verzoegerung. Ein Test, der den Timer
+            // testweise auf 5 ms stellt, prueft nicht mehr die tatsaechliche
+            // Wartezeit - und war hier auch nicht verlaesslich.
+            boolean verschwunden = false;
+            for (int i = 0; i < 350 && !verschwunden; i++) {
+                Thread.sleep(20);
+                verschwunden = leseAufEdt(statusLabel::getText).isEmpty();
+            }
+            String diagnose = "Erfolgsmeldung blieb stehen: laeuft=" + toastTimer.isRunning()
+                    + " wiederholt=" + toastTimer.isRepeats()
+                    + " verzoegerung=" + toastTimer.getDelay()
+                    + " text='" + leseAufEdt(statusLabel::getText) + "'";
+            assertTrue(verschwunden, diagnose);
+        }
+    }
+
+
+    /** Setzt Text und faerbt sofort, ohne den 120-ms-Timer abzuwarten. */
+    private void faerbe(String text) {
+        sqlArea.setText(text);
+        panel.faerbeHoch();
+    }
+
+    private int ab(String teil) {
+        return sqlArea.getText().indexOf(teil);
+    }
+
+    /** Erste Stelle von {@code teil}, optional ab einem Startindex. */
+    private int ab(String teil, int ab) {
+        return sqlArea.getText().indexOf(teil, ab);
+    }
+
+    private StyledDocument document() {
+        // getStyledDocument() sitzt auf JTextPane, nicht auf JTextComponent.
+        return ((JTextPane) sqlArea).getStyledDocument();
+    }
+
+    private Color farbeAn(String teil) {
+        int pos = ab(teil);
+        assertTrue(pos >= 0, "'" + teil + "' steht nicht im Text: " + sqlArea.getText());
+        return farbeAn(teil, pos);
+    }
+
+    private Color farbeAn(String teil, int pos) {
+        assertTrue(pos >= 0, "'" + teil + "' steht nicht an " + pos);
+        return StyleConstants.getForeground(document().getCharacterElement(pos).getAttributes());
+    }
+
+    private boolean kursivAn(String teil) {
+        return StyleConstants.isItalic(document().getCharacterElement(ab(teil)).getAttributes());
+    }
+
+    private void aufEdt(Runnable aktion) throws Exception {
+        SwingUtilities.invokeAndWait(aktion);
     }
 
     private static double contrast(Color a, Color b) {

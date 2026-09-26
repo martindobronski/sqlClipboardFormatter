@@ -2,8 +2,6 @@ package signaliduna;
 
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
-import javax.swing.UnsupportedLookAndFeelException;
 import java.awt.Dimension;
 import java.awt.GraphicsEnvironment;
 
@@ -20,7 +18,7 @@ public final class SqlClipboardFormatter extends JFrame {
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setContentPane(new FormatterPanel());
         pack();
-        setMinimumSize(new Dimension(560, 380));
+        setMinimumSize(new Dimension(620, 420));
         setLocationRelativeTo(null);
     }
 
@@ -29,11 +27,9 @@ public final class SqlClipboardFormatter extends JFrame {
             System.err.println("SQL Clipboard Formatter benötigt eine grafische Umgebung.");
             return;
         }
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (ReflectiveOperationException | UnsupportedLookAndFeelException ignored) {
-            // Auf den Standard-LookAndFeel zurückfallen.
-        }
+        // Muss vor dem Erzeugen des Panels passieren, sonst bekommen die
+        // Komponenten noch das System-LookAndFeel.
+        FormatterPanel.setzeTheme(Theme.DUNKEL);
         SwingUtilities.invokeLater(() -> new SqlClipboardFormatter().setVisible(true));
     }
 }
