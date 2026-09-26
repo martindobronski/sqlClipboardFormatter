@@ -34,25 +34,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Java 25 bereitstellen
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "25"
-
-      - name: Git Bash in den PATH legen
-        shell: pwsh
-        # Ohne das loest "bash" unter Windows auf den WSL-Starter auf
-        # (C:\Windows\System32\bash.exe) und die StartSkriptTest laufen
-        # entweder in eine WSL-Umgebung ohne dieses Dateisystem oder
-        # scheitern mit "Distribution failed to start". GITHUB_PATH legt
-        # den Eintrag v an, vor System32.
-        run: |
-          $gitBin = "C:\Program Files\Git\bin"
-          if (-not (Test-Path "$gitBin\bash.exe")) {
-            throw "Git Bash nicht unter $gitBin gefunden"
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value $gitBin
-          Write-Host "Git Bash bereit: $gitBin\bash.exe"
 
       - name: Laufzeitlage des Runners festhalten
         shell: pwsh

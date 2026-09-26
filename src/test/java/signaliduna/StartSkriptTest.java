@@ -191,7 +191,7 @@ class StartSkriptTest {
     @Test
     @DisplayName("die Shell-Syntax ist gueltig")
     void syntax() throws Exception {
-        Ergebnis ergebnis = fuehreRoh(List.of("bash", "-n", "start.sh"));
+        Ergebnis ergebnis = fuehreRoh(List.of(bash(), "-n", "start.sh"));
         assertEquals(0, ergebnis.exitcode, () -> "Syntaxfehler: " + ergebnis.output);
     }
 
@@ -226,11 +226,42 @@ class StartSkriptTest {
 
     private Ergebnis fuehreAus(List<String> argumente) {
         List<String> befehl = new ArrayList<>();
-        befehl.add("bash");
+        befehl.add(bash());
         befehl.add(skript.getPath());
         befehl.add("-Pruefen");
         befehl.addAll(argumente.stream().filter(a -> !a.equals("-Pruefen")).toList());
         return fuehreRoh(befehl);
+    }
+
+    /**
+     * Git Bash, unter Windows ueber den vollen Pfad.
+     *
+     * <p>Der Name allein genuegt dort nicht: Windows sucht bei CreateProcess
+     * zuerst in System32, und dort liegt {@code C:\Windows\System32\bash.exe} -
+     * der Starter von WSL, nicht von Git. Der aus dem PATH aufgeloeste Befehl
+     * war deshalb WSL, und der Test scheiterte mit der Meldung "Windows
+     * Subsystem for Linux has no installed distributions", ohne je etwas ueber
+     * start.sh zu sagen. Ein Eintrag im PATH hilft nicht, weil System32 Vorrang
+     * hat. Deshalb wird der absolute Pfad gesucht.
+     */
+    private static String bash() {
+        if (!System.getProperty("os.name", "").toLowerCase().startsWith("win")) {
+            return "bash";
+        }
+        List<String> kandidaten = List.of(
+                "C:\\Program Files\\Git\\bin\\bash.exe",
+                "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+                "C:\\Program Files\\Git\\usr\\bin\\bash.exe");
+        for (String kandidat : kandidaten) {
+            if (new File(kandidat).canExecute()) {
+                return kandidat;
+            }
+        }
+        // Kein Git Bash: lieber klar sagen, welches Skript fehlt, als in den
+        // WSL-Starter zu laufen und dessen Meldung als Testergebnis zu lesen.
+        throw new IllegalStateException(
+                "Git Bash nicht gefunden. Auf windows-latest liegt es unter "
+                        + "C:\\Program Files\\Git\\bin.");
     }
 
     private Ergebnis fuehreRoh(List<String> befehl) {
