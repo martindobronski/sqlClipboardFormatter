@@ -5,7 +5,7 @@ build/
 *.class
 *.jar
 
-# Mitgelieferte Laufzeit aus dem Release-ZIP. Das sind rund 90 MB
+# Mitgelieferte Laufzeit aus dem Release-ZIP. Das sind rund 180 MB
 # Binaerdateien, die je nach Plattform verschieden sind - sie gehoeren
 # nicht in die Historie, sondern in das Release-Asset. start.bat und
 # start.sh finden sie, wenn sie da ist, und laufen ohne sie weiter.

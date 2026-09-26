@@ -65,11 +65,12 @@ außer Windows.** Kein Java, kein Maven, keine Installation.
 | **ZIP entpacken** (Abschnitt 3)    | —    | —     | nein               |
 | Aus dem Quelltext (Abschnitt 4)    | 17+  | ja    | nein               |
 
-Im ZIP liegt eine vollständige Java-Laufzeit bereits bei. Sie ist rund 90 MB
-groß, davon etwa 56 MB die Laufzeit selbst; dafür startet das Programm auf
-einem Rechner, auf dem noch nie Java war.
+Im ZIP liegt eine vollständige Java-Laufzeit bereits bei. Das ZIP selbst ist
+rund 57 MB groß, entpackt sind es etwa 180 MB — fast alles die Laufzeit, die
+Anwendung selbst liegt bei knapp 1 MB. Dafür startet das Programm auf einem
+Rechner, auf dem noch nie Java war.
 
-Wollen Sie die 56 MB nicht mitnehmen, lassen Sie den Ordner `jre/` nach dem
+Wollen Sie die 57 MB nicht mitnehmen, lassen Sie den Ordner `jre/` nach dem
 Entpacken einfach löschen und installieren Java selbst — dann nimmt `start.bat`
 automatisch Ihr Java. Beides gleichzeitig ist unnötig; der Ordner `jre/` hat
 Vorrang.

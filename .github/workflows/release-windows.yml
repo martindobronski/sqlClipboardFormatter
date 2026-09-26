@@ -219,7 +219,7 @@ jobs:
             $mb = [math]::Round((Get-Item $pfad).Length / 1MB, 1)
             Write-Host "=== fertiges Asset ==="
             Write-Host "  $($env:ASSET_NAME)  $mb MB"
-            Write-Host "  entpackt rund 90 MB, davon entfallen etwa 56 MB auf die Laufzeit"
+            Write-Host "  entpackt rund 180 MB, davon entfallen ueber 179 MB auf die Laufzeit"
           }
 
       - name: Release veroeffentlichen
@@ -238,7 +238,8 @@ jobs:
           (Windows x64) und das fertige Jar. Es ist kein Java und kein Maven
           noetig - start.bat nimmt die Laufzeit aus dem Ordner ``jre/``.
 
-          **Groesse:** entpackt rund 90 MB, davon etwa 56 MB die Laufzeit.
+          **Groesse:** 57 MB im Download, entpackt rund 180 MB. Fast alles davon
+          ist die Laufzeit; die Anwendung selbst liegt bei knapp 1 MB.
           Wer die Laufzeit nicht mitfuehren will, installiert Java selbst und
           laesst den Ordner ``jre/`` weg; start.bat nimmt dann JAVA_HOME oder
           den PATH.

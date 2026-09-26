@@ -295,7 +295,7 @@ set SQLFORMATTER_JAVA=C:\Java\jdk-17\bin\java.exe
 start.bat
 ```
 
-Der Ordner `jre/` ist in `.gitignore` ausgenommen: rund 90 MB Binärdateien, je nach
+Der Ordner `jre/` ist in `.gitignore` ausgenommen: rund 180 MB Binärdateien, je nach
 Plattform verschieden, gehören nicht in die Historie, sondern in das Release-Asset.
 
 Beide Skripte verstehen dieselben Schalter — das ist auch getestet, weil die
