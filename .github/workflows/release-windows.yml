@@ -202,7 +202,11 @@ jobs:
                  else { "${{ github.ref_name }}" }
           $name = "sqlClipboardFormatter-$version-windows-x64"
           $pfad = Join-Path $env:RUNNER_TEMP "$name.zip"
-          Compress-Archive -Path (Join-Path $ziel "*") -DestinationPath $pfad `
+          # Compress-Archive auf den ORDNER, nicht auf dessen Inhalt: sonst
+          # landen start.bat, jre/ und target/ beim Entpacken direkt in den
+          # Download-Ordner. Mit dem Ordner entsteht beim Entpacken genau ein
+          # neuer Ordner, und alles bleibt zusammen.
+          Compress-Archive -Path $ziel -DestinationPath $pfad `
               -CompressionLevel Optimal
           $mb = [math]::Round((Get-Item $pfad).Length / 1MB, 1)
           Write-Host "ZIP: $pfad ($mb MB)"

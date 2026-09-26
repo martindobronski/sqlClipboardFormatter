@@ -80,10 +80,10 @@ Java, nicht die für Intel. Ein ZIP gibt es derzeit nur für x64.
 
 ## 3. Der einfache Weg: ZIP entpacken und starten
 
-1. Das ZIP herunterladen und in einen Ordner entpacken, in dem das Programm
-   liegen darf. Der Benutzerordner ist ein guter Ort; wichtig ist, dass Sie
-   später **nicht** nur die einzelne `start.bat` herauskopieren.
-2. Doppelklick auf `start.bat`.
+1. Das ZIP herunterladen und entpacken. Dabei entsteht automatisch ein neuer
+   Ordner `sqlClipboardFormatter-<Version>-windows-x64`; den bitte **nicht**
+   wieder löschen, sonst fehlt dem Programm sein Zuhause.
+2. In diesem Ordner Doppelklick auf `start.bat`.
 
 Danach öffnet sich das Programm. Es läuft aus einem schwarzen Fenster, das
 danach im Hintergrund bleibt — Sie schließen es nicht, solange Sie das Programm
@@ -373,7 +373,7 @@ Skript ausgibt:
 | Meldung                                                                       | Ursache                                                                                                     |
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `Fehler: kein Java gefunden. Java 17 oder neuer installieren.`                | Java fehlt oder ist zu alt — Schritt 3                                                                      |
-| `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Maven fehlt, obwohl noch nicht übersetzt wurde — oder das Jar fehlt ganz, etwa weil Sie nur `start.bat` herauskopiert haben |
+| `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Im entpackten ZIP fehlt das fertige Programm — etwa weil der Ordner `target/` gelöscht wurde. Im Quelltext: Maven fehlt, obwohl noch nicht übersetzt wurde |
 | `Fehler: der Build ist fehlgeschlagen.`                                       | Beim Übersetzen ging etwas schief — die ausführliche Meldung steht darüber                                  |
 | `Fehler: "target\SqlClipboardFormatter-0.2.jar" fehlt trotz Bauvorgang.`      | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
 
