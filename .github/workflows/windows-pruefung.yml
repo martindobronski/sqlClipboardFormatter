@@ -100,48 +100,44 @@ jobs:
           Write-Host "Aufgebaut: $ziel"
           & (Join-Path $ziel "jre\bin\java.exe") -version
 
-      - name: System-Java unsichtbar machen
+      # Ab hier wird nichts mehr ueber GITHUB_ENV oder GITHUB_PATH
+      # umgestellt. Das hatte einen Versuch gekostet: setup-java schreibt
+      # seinen Toolpfad selbst in GITHUB_PATH, und zwei Eintraege fuer
+      # denselben Namen werden in einer Reihenfolge angewendet, die man nicht
+      # kontrolliert - der java-Eintrag blieb stehen. Ein Kindprozess erbt
+      # dagegen zuverlaessig die Umgebung des aufrufenden Prozesses, also wird
+      # sie hier direkt geaendert. Der Build ist dafuer vorher gelaufen.
+      - name: "-Pruefen ohne System-Java"
         shell: pwsh
-        # Der eigentliche Beweis. Ab hier ist start.bat auf jre/ angewiesen:
-        # kein JAVA_HOME, kein java im PATH, kein Maven. Startet die App
-        # trotzdem, kann sie nicht an einem System-Java haengen.
         run: |
-          $neu = @()
-          foreach ($eintrag in ($env:PATH -split ';')) {
-            if ($eintrag -and $eintrag -notmatch '(?i)java|jdk|temurin|hostedtoolcache') {
-              $neu += $eintrag
+          function BlendesSystemJava {
+            $neu = @()
+            foreach ($eintrag in ($env:PATH -split ';')) {
+              if ($eintrag -and $eintrag -notmatch '(?i)java|jdk|temurin|hostedtoolcache') {
+                $neu += $eintrag
+              }
             }
+            $env:PATH = $neu -join ';'
+            $env:JAVA_HOME = ""
+            $env:MAVEN_HOME = ""
+            $env:JAVA_HOME_25_X64 = ""
+            $env:SQLFORMATTER_JAVA = ""
           }
-          "PATH=$($neu -join ';')" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          "JAVA_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "MAVEN_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Verbleibender PATH:"
-          $env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { Write-Host "  $_" }
+          BlendesSystemJava
 
-      - name: "Kontrolle: die Quellen von start.bat sind alle leer"
-        shell: pwsh
-        # Bewusst KEINE Suche nach java.exe auf der Platte. start.bat tastet
-        # die Platte nicht ab, es kennt genau vier Quellen: jre/, die Variable
-        # SQLFORMATTER_JAVA, JAVA_HOME und den PATH. Ein Laufwerksdurchsuchen
-        # beweist nichts darueber, was das Skript tun wuerde - und findet auf
-        # jedem Runner irgendetwas, auch wenn der Start vollstaendig korrekt
-        # waere. Der eigentliche Nachweis steht im letzten Schritt: die
-        # gestartete JVM muss unterhalb von jre/ liegen. Laeuft sie aus
-        # einem anderen Verzeichnis, faellt der Test dort auf.
-        run: |
-          Write-Host "JAVA_HOME       = '$env:JAVA_HOME'"
-          Write-Host "MAVEN_HOME      = '$env:MAVEN_HOME'"
+          # Genau die vier Quellen, die start.bat kennt. Bewusst KEINE Suche
+          # nach java.exe auf der Platte: start.bat tastet die Platte nicht ab,
+          # ein Laufwerksdurchsuchen beweist also nichts und findet auf jedem
+          # Runner irgendetwas. massgeblich ist, was "where java" findet - das
+          # ist der Befehl, mit dem das Skript selbst sucht.
+          Write-Host "=== Quellen von start.bat ==="
+          Write-Host "JAVA_HOME        = '$env:JAVA_HOME'"
           Write-Host "SQLFORMATTER_JAVA= '$env:SQLFORMATTER_JAVA'"
+          $where = cmd /c "where java 2>nul"
+          if ($where) { throw "where java findet noch etwas: $where" }
+          Write-Host "where java       findet nichts"
+          Write-Host "jre/             = $(if (Test-Path "$env:RUNNER_TEMP\release\jre\bin\java.exe") { 'vorhanden' } else { 'FEHLT' })"
 
-          $gefunden = Get-Command java -ErrorAction SilentlyContinue
-          if ($gefunden) { throw "java ist im PATH auffindbar: $($gefunden.Source)" }
-          if ($env:JAVA_HOME) { throw "JAVA_HOME ist gesetzt" }
-          if ($env:SQLFORMATTER_JAVA) { throw "SQLFORMATTER_JAVA ist gesetzt" }
-          Write-Host "Kein Java ausserhalb von jre/. start.bat hat keine andere Quelle."
-
-      - name: start.bat nimmt die mitgelieferte Laufzeit
-        shell: pwsh
-        run: |
           $ziel = Join-Path $env:RUNNER_TEMP "release"
           $ausgabe = cmd /c "cd /d `"$ziel`" && start.bat -Pruefen" 2>&1
           $ausgabe | ForEach-Object { Write-Host $_ }
@@ -158,6 +154,19 @@ jobs:
       - name: die App startet ohne System-Java
         shell: pwsh
         run: |
+          $neu = @()
+          foreach ($eintrag in ($env:PATH -split ';')) {
+            if ($eintrag -and $eintrag -notmatch '(?i)java|jdk|temurin|hostedtoolcache') {
+              $neu += $eintrag
+            }
+          }
+          $env:PATH = $neu -join ';'
+          $env:JAVA_HOME = ""
+          $env:MAVEN_HOME = ""
+          $env:JAVA_HOME_25_X64 = ""
+          $env:SQLFORMATTER_JAVA = ""
+          if (cmd /c "where java 2>nul") { throw "es ist noch ein Java auffindbar" }
+
           $ziel = Join-Path $env:RUNNER_TEMP "release"
           $log = Join-Path $env:RUNNER_TEMP "release-start.log"
           $prozess = Start-Process -FilePath "cmd.exe" `
@@ -188,6 +197,7 @@ jobs:
 
           # Der Nachweis, dass es wirklich die mitgelieferte JVM ist: der
           # Prozesspfad muss im jre-Ordner des Release-Verzeichnisses liegen.
+          # Scheitert der Start an einem System-Java, faellt es genau hier.
           $pfade = $jvm | ForEach-Object { $_.Path }
           $pfade | ForEach-Object { Write-Host "  JVM: $_" }
           $fremd = $pfade | Where-Object { $_ -notlike "$ziel\jre\*" }

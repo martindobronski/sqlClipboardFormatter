@@ -125,8 +125,13 @@ jobs:
                                      Measure-Object Length -Sum).Sum / 1MB), 1)
           Write-Host "Aufgebaut: $ziel ($groesse MB entpackt, Version $version)"
 
-      - name: System-Java unsichtbar machen
+      - name: Starten aus dem Aufbau heraus, ohne System-Java
         shell: pwsh
+        # Die Umgebung wird hier direkt geaendert und nicht ueber GITHUB_ENV
+        # oder GITHUB_PATH: setup-java schreibt seinen Toolpfad selbst in
+        # GITHUB_PATH, und zwei Eintraege fuer denselben Namen werden in
+        # einer Reihenfolge angewendet, die man nicht kontrolliert. Der
+        # Kindprozess erbt stattdessen zuverlaessig diese Umgebung.
         run: |
           $neu = @()
           foreach ($eintrag in ($env:PATH -split ';')) {
@@ -134,16 +139,16 @@ jobs:
               $neu += $eintrag
             }
           }
-          "PATH=$($neu -join ';')" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          "JAVA_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "MAVEN_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:PATH = $neu -join ';'
+          $env:JAVA_HOME = ""
+          $env:MAVEN_HOME = ""
+          $env:JAVA_HOME_25_X64 = ""
+          $env:SQLFORMATTER_JAVA = ""
 
-      - name: Starten aus dem Aufbau heraus, ohne System-Java
-        shell: pwsh
-        run: |
           $ziel = Join-Path $env:RUNNER_TEMP "windows-x64"
-          $gefunden = Get-Command java -ErrorAction SilentlyContinue
-          if ($gefunden) { throw "java ist noch im PATH - der Test waere wertlos" }
+          $where = cmd /c "where java 2>nul"
+          if ($where) { throw "where java findet noch etwas - der Test waere wertlos: $where" }
+          Write-Host "where java findet nichts. start.bat hat nur jre/ als Quelle."
 
           $ausgabe = cmd /c "cd /d `"$ziel`" && start.bat -Pruefen" 2>&1
           $ausgabe | ForEach-Object { Write-Host $_ }
