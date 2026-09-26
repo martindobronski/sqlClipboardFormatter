@@ -116,9 +116,13 @@ jobs:
           Copy-Item -Recurse jre $ziel
           Copy-Item $jar.FullName (Join-Path $ziel "target")
           Copy-Item README.md $ziel
-          Copy-Item docs\anleitung-windows.md $ziel
-          Copy-Item docs\bild-hell.png $ziel
-          Copy-Item docs\bild-dunkel.png $ziel
+          # Die Doku gehoert nach docs/, wie es README und Anleitung beschreiben.
+          # Ein Copy ohne Ziel landet in der Wurzel - die Anleitung waere dann
+          # unter einem anderen Pfad zu finden als dokumentiert, und ihre
+          # Bildverweise gingen ins Leere.
+          Copy-Item docs\anleitung-windows.md (Join-Path $ziel "docs")
+          Copy-Item docs\bild-hell.png (Join-Path $ziel "docs")
+          Copy-Item docs\bild-dunkel.png (Join-Path $ziel "docs")
 
           if (Test-Path (Join-Path $ziel "pom.xml")) { throw "pom.xml gehoert nicht ins ZIP" }
           if (Test-Path (Join-Path $ziel "src")) { throw "src/ gehoert nicht ins ZIP" }
@@ -206,10 +210,45 @@ jobs:
           # landen start.bat, jre/ und target/ beim Entpacken direkt in den
           # Download-Ordner. Mit dem Ordner entsteht beim Entpacken genau ein
           # neuer Ordner, und alles bleibt zusammen.
-          Compress-Archive -Path $ziel -DestinationPath $pfad `
+          #
+          # Der Ordnername im Archiv muss dabei dem Dateinamen entsprechen.
+          # Gepackt wird deshalb der vorher umbenannte Ordner: sonst heisst der
+          # Ordner im Archiv "windows-x64", waehrend die Anleitung einen
+          # Ordner "sqlClipboardFormatter-<Version>-windows-x64" verspricht.
+          $endordner = Join-Path $env:RUNNER_TEMP $name
+          Remove-Item $endordner -Recurse -Force -ErrorAction SilentlyContinue
+          Move-Item $ziel $endordner
+          Compress-Archive -Path $endordner -DestinationPath $pfad `
               -CompressionLevel Optimal
           $mb = [math]::Round((Get-Item $pfad).Length / 1MB, 1)
           Write-Host "ZIP: $pfad ($mb MB)"
+
+          # Gegenprobe am fertigen Archiv. Beide Fehler sind im Review
+          # durchgerutscht, weil nur der Aufbauordner geprueft wurde, nicht
+          # das, was tatsaechlich entpackt wird.
+          $pfadzip = "$pfad"
+          $inhalt = [IO.Compression.ZipFile]::OpenRead($pfadzip)
+          try {
+            $namen = $inhalt.Entries | ForEach-Object { $_.FullName }
+            $wurzel = $namen | ForEach-Object { ($_ -split '/')[0] } |
+                      Sort-Object -Unique
+            if ($wurzel.Count -ne 1 -or $wurzel[0] -ne $name) {
+              throw "ZIP enthaelt unerwartete Wurzelordner: $($wurzel -join ', ')"
+            }
+            foreach ($pflicht in @("start.bat", "README.md", "jre/bin/java.exe",
+                                   "target/SqlClipboardFormatter-$version.jar",
+                                   "docs/anleitung-windows.md")) {
+              if (-not ($namen -contains "$name/$pflicht")) {
+                throw "ZIP fehlt: $pflicht"
+              }
+            }
+            if ($namen | Where-Object { $_ -match '__MACOSX|\.DS_Store' }) {
+              throw "ZIP enthaelt Systemmuell"
+            }
+            Write-Host "Gegenprobe: $($namen.Count) Eintraege, Wurzel $($wurzel[0]), Doku unter docs/ - alles wie dokumentiert."
+          } finally {
+            $inhalt.Dispose()
+          }
           "ASSET_NAME=$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "ASSET_PATH=$pfad" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
