@@ -391,7 +391,13 @@ class StartSkriptTest {
         } else {
             Files.writeString(java.toPath(), "kein Java\n", StandardCharsets.UTF_8);
         }
-        assertTrue(java.setExecutable(brauchbar), "Ausfuehrbarkeit liess sich nicht setzen");
+        // Nur das Setzen pruefen. Das Entfernen gibt unter Windows false
+        // zurueck - dort gibt es kein Ausfuehrungsrecht, das man wegnehmen
+        // koennte. Genau daran ist der Test auf windows-latest gescheitert,
+        // nicht an der Laufzeit.
+        if (brauchbar) {
+            assertTrue(java.setExecutable(true), "Ausfuehrbarkeit liess sich nicht setzen");
+        }
     }
 
     /**raeumt {@code jre/} wieder weg, damit ein Fehlschlag nichts zuruecklaesst.*/

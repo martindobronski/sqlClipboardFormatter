@@ -118,20 +118,26 @@ jobs:
           Write-Host "Verbleibender PATH:"
           $env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { Write-Host "  $_" }
 
-      - name: "Kontrolle: es gibt wirklich kein Java mehr"
+      - name: "Kontrolle: die Quellen von start.bat sind alle leer"
         shell: pwsh
+        # Bewusst KEINE Suche nach java.exe auf der Platte. start.bat tastet
+        # die Platte nicht ab, es kennt genau vier Quellen: jre/, die Variable
+        # SQLFORMATTER_JAVA, JAVA_HOME und den PATH. Ein Laufwerksdurchsuchen
+        # beweist nichts darueber, was das Skript tun wuerde - und findet auf
+        # jedem Runner irgendetwas, auch wenn der Start vollstaendig korrekt
+        # waere. Der eigentliche Nachweis steht im letzten Schritt: die
+        # gestartete JVM muss unterhalb von jre/ liegen. Laeuft sie aus
+        # einem anderen Verzeichnis, faellt der Test dort auf.
         run: |
-          Write-Host "JAVA_HOME = '$env:JAVA_HOME'"
+          Write-Host "JAVA_HOME       = '$env:JAVA_HOME'"
+          Write-Host "MAVEN_HOME      = '$env:MAVEN_HOME'"
+          Write-Host "SQLFORMATTER_JAVA= '$env:SQLFORMATTER_JAVA'"
+
           $gefunden = Get-Command java -ErrorAction SilentlyContinue
-          if ($gefunden) { throw "java ist weiterhin auffindbar: $($gefunden.Source)" }
-          $rest = Get-ChildItem C:\ -Filter java.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-                  Where-Object { $_.FullName -notlike "$env:RUNNER_TEMP\release\*" } |
-                  Select-Object -First 3
-          if ($rest) {
-            $rest | ForEach-Object { Write-Host "  ausserhalb des Release: $($_.FullName)" }
-            throw "es gibt noch eine java.exe ausserhalb des Release-Verzeichnisses"
-          }
-          Write-Host "Kein Java ausserhalb des Release-Verzeichnisses. Die Belege gelten."
+          if ($gefunden) { throw "java ist im PATH auffindbar: $($gefunden.Source)" }
+          if ($env:JAVA_HOME) { throw "JAVA_HOME ist gesetzt" }
+          if ($env:SQLFORMATTER_JAVA) { throw "SQLFORMATTER_JAVA ist gesetzt" }
+          Write-Host "Kein Java ausserhalb von jre/. start.bat hat keine andere Quelle."
 
       - name: start.bat nimmt die mitgelieferte Laufzeit
         shell: pwsh

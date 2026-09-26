@@ -1,0 +1,242 @@
+# Baut das Windows-ZIP und haengt es an ein Release.
+#
+# Der Aufbau ist absichtlich derselbe wie im Job "Release-Aufbau ohne
+# System-Java" der windows-pruefung.yml: start.bat, jre/ und das fertige
+# Jar, ohne pom.xml, ohne src/, ohne Maven. Ein ZIP, das man nicht
+# geprueft hat, ist nur eine Behauptung - also wird es hier vor dem
+# Hochladen gestartet, mit unsichtbarem System-Java. Erscheint die JVM
+# nicht unterhalb von jre/, wird nichts veroeffentlicht.
+#
+# Ausgeloest wird nur von einem Tag "v*". Der Testlauf der
+# windows-pruefung.yml haengt an main und laeuft bei einem Tag nicht mit,
+# deshalb laeuft die vollstaendige Suite hier noch einmal.
+
+name: Windows-Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag, unter dem veroeffentlicht wird (z.B. v0.2)"
+        required: true
+
+permissions:
+  contents: write
+
+# Zwei Laeufe auf denselben Tag wuerden zwei Releases erzeugen.
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  veroeffentlichen:
+    name: ZIP bauen und veroeffentlichen
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    env:
+      # Feste Version, feste Pruefsumme. Beides absichtlich: eine JRE, die
+      # sich zur Download-Zeit still aendert, ist keine Lieferung, sondern
+      # eine Ueberraschung. Aktualisieren heisst: zwei Zahlen aendern und
+      # das Ergebnis selbst starten.
+      JRE_URL: "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jre_x64_windows_hotspot_25.0.4.1_1.zip"
+      JRE_SHA256: "4c95451cea98556def2c54f7782933f52a26d4a36bd85e1d59f0364464828b07"
+      JRE_VERSION: "25.0.4+101"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 25 bereitstellen
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Tag und Programmversion vergleichen
+        shell: pwsh
+        # Sonst koennte ein Tag v1.0 ein ZIP mit Version 0.2 ergeben, und das
+        # faellt erst beim Entpacken auf.
+        run: |
+          $tag = if ("${{ github.event.inputs.tag }}") { "${{ github.event.inputs.tag }}" }
+                 else { "${{ github.ref_name }}" }
+          $version = ([regex]::Match((Get-Content -Raw pom.xml), '<version>([^<]+)</version>')).Groups[1].Value
+          Write-Host "Tag:              $tag"
+          Write-Host "Version in pom.xml: $version"
+          if ($tag.TrimStart('v') -ne $version) {
+            throw "Tag $tag passt nicht zur Version $version in der pom.xml"
+          }
+
+      - name: Vollstaendige Testsuite
+        run: mvn -B clean verify
+
+      - name: Temurin-JRE nach jre/ entpacken
+        shell: pwsh
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP "jre.zip"
+          Invoke-WebRequest -Uri $env:JRE_URL -OutFile $cache
+          $ist = (Get-FileHash -Path $cache -Algorithm SHA256).Hash.ToLower()
+          if ($ist -ne $env:JRE_SHA256) {
+            throw "Pruefsumme weicht ab. erwartet $env:JRE_SHA256, bekommen $ist"
+          }
+          Write-Host "Pruefsumme stimmt ($($env:JRE_VERSION))."
+
+          $entpack = Join-Path $env:RUNNER_TEMP "jre-ausgepackt"
+          Expand-Archive -Path $cache -DestinationPath $entpack -Force
+          $wurzel = Get-ChildItem $entpack -Directory | Select-Object -First 1
+          if (-not $wurzel) { throw "das Archiv enthaelt kein Wurzelverzeichnis" }
+          Move-Item $wurzel.FullName (Join-Path $env:GITHUB_WORKSPACE "jre")
+          Remove-Item $entpack -Recurse -Force
+          & ".\jre\bin\java.exe" -version
+
+      - name: Release-Verzeichnis zusammenstellen
+        shell: pwsh
+        # Genau das kommt ins ZIP. raycast/ fehlt mit Absicht: die Datei
+        # gehoert zu Raycast auf dem Mac und wird vom Java-Code nirgends
+        # referenziert. Die Anleitung liegt bei, weil sie ohne Internet
+        # gelesen werden kann, wenn etwas nicht startet.
+        run: |
+          $version = ([regex]::Match((Get-Content -Raw pom.xml), '<version>([^<]+)</version>')).Groups[1].Value
+          $jar = Get-ChildItem target -Filter "SqlClipboardFormatter-*.jar" | Select-Object -First 1
+          if (-not $jar) { throw "es wurde kein Jar gebaut" }
+
+          $ziel = Join-Path $env:RUNNER_TEMP "windows-x64"
+          Remove-Item $ziel -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $ziel | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $ziel "target") | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $ziel "docs") | Out-Null
+
+          Copy-Item start.bat $ziel
+          Copy-Item -Recurse jre $ziel
+          Copy-Item $jar.FullName (Join-Path $ziel "target")
+          Copy-Item README.md $ziel
+          Copy-Item docs\anleitung-windows.md $ziel
+          Copy-Item docs\bild-hell.png $ziel
+          Copy-Item docs\bild-dunkel.png $ziel
+
+          if (Test-Path (Join-Path $ziel "pom.xml")) { throw "pom.xml gehoert nicht ins ZIP" }
+          if (Test-Path (Join-Path $ziel "src")) { throw "src/ gehoert nicht ins ZIP" }
+          if (-not (Test-Path (Join-Path $ziel "jre\bin\java.exe"))) {
+            throw "jre\bin\java.exe fehlt im Aufbau"
+          }
+          $groesse = [math]::Round(((Get-ChildItem $ziel -Recurse -File |
+                                     Measure-Object Length -Sum).Sum / 1MB), 1)
+          Write-Host "Aufgebaut: $ziel ($groesse MB entpackt, Version $version)"
+
+      - name: System-Java unsichtbar machen
+        shell: pwsh
+        run: |
+          $neu = @()
+          foreach ($eintrag in ($env:PATH -split ';')) {
+            if ($eintrag -and $eintrag -notmatch '(?i)java|jdk|temurin|hostedtoolcache') {
+              $neu += $eintrag
+            }
+          }
+          "PATH=$($neu -join ';')" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "JAVA_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "MAVEN_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Starten aus dem Aufbau heraus, ohne System-Java
+        shell: pwsh
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP "windows-x64"
+          $gefunden = Get-Command java -ErrorAction SilentlyContinue
+          if ($gefunden) { throw "java ist noch im PATH - der Test waere wertlos" }
+
+          $ausgabe = cmd /c "cd /d `"$ziel`" && start.bat -Pruefen" 2>&1
+          $ausgabe | ForEach-Object { Write-Host $_ }
+          $text = ($ausgabe | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "start.bat -Pruefen endete mit $LASTEXITCODE" }
+          if (-not $text.Contains("(mitgeliefert)")) {
+            throw "start.bat hat die mitgelieferte Laufzeit nicht genommen"
+          }
+
+          $log = Join-Path $env:RUNNER_TEMP "start.log"
+          $prozess = Start-Process -FilePath "cmd.exe" `
+              -ArgumentList "/c", "cd /d `"$ziel`" && start.bat" `
+              -PassThru -NoNewWindow `
+              -RedirectStandardOutput $log `
+              -RedirectStandardError "$log.err"
+          $jvm = $null
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 2
+            $jvm = Get-Process -Name java -ErrorAction SilentlyContinue
+            if ($jvm) { break }
+            if ($prozess.HasExited) { break }
+          }
+          if (-not $jvm) {
+            if (Test-Path $log) { Get-Content $log }
+            if (Test-Path "$log.err") { Get-Content "$log.err" }
+            throw "keine JVM gestartet - das ZIP waere unbrauchbar"
+          }
+          $pfade = $jvm | ForEach-Object { $_.Path }
+          $pfade | ForEach-Object { Write-Host "  JVM: $_" }
+          $fremd = $pfade | Where-Object { $_ -notlike "$ziel\jre\*" }
+          if ($fremd) { throw "die JVM kam nicht aus dem ZIP: $fremd" }
+          $jvm | Stop-Process -Force
+          if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
+          Write-Host "Nachweis erbracht: die App laeuft ohne System-Java."
+
+      - name: ZIP packen
+        shell: pwsh
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP "windows-x64"
+          $version = ([regex]::Match((Get-Content -Raw pom.xml), '<version>([^<]+)</version>')).Groups[1].Value
+          $tag = if ("${{ github.event.inputs.tag }}") { "${{ github.event.inputs.tag }}" }
+                 else { "${{ github.ref_name }}" }
+          $name = "sqlClipboardFormatter-$version-windows-x64"
+          $pfad = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Compress-Archive -Path (Join-Path $ziel "*") -DestinationPath $pfad `
+              -CompressionLevel Optimal
+          $mb = [math]::Round((Get-Item $pfad).Length / 1MB, 1)
+          Write-Host "ZIP: $pfad ($mb MB)"
+          "ASSET_NAME=$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ASSET_PATH=$pfad" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Groesse im Protokoll festhalten
+        if: always()
+        shell: pwsh
+        run: |
+          $pfad = "${{ env.ASSET_PATH }}"
+          if ($pfad -and (Test-Path $pfad)) {
+            $mb = [math]::Round((Get-Item $pfad).Length / 1MB, 1)
+            Write-Host "=== fertiges Asset ==="
+            Write-Host "  $($env:ASSET_NAME)  $mb MB"
+            Write-Host "  entpackt rund 90 MB, davon entfallen etwa 56 MB auf die Laufzeit"
+          }
+
+      - name: Release veroeffentlichen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $hinweis = @"
+          **Enthalten:** start.bat, die mitgelieferte Temurin-Laufzeit $env:JRE_VERSION
+          (Windows x64) und das fertige Jar. Es ist kein Java und kein Maven
+          noetig - start.bat nimmt die Laufzeit aus dem Ordner ``jre/``.
+
+          **Groesse:** entpackt rund 90 MB, davon etwa 56 MB die Laufzeit.
+          Wer die Laufzeit nicht mitfuehren will, installiert Java selbst und
+          laesst den Ordner ``jre/`` weg; start.bat nimmt dann JAVA_HOME oder
+          den PATH.
+
+          **Voraussetzungen:** Windows x64. Fuer macOS und Linux gibt es kein
+          ZIP, dort laeuft start.sh aus dem Repository.
+          "@
+          gh release view $env:RELEASE_TAG --json tagName --jq .tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            # Ein zweiter Lauf soll das Asset ersetzen, nicht an einem
+            # vorhandenen Release scheitern.
+            Write-Host "Release $env:RELEASE_TAG gibt es schon - Asset wird ersetzt."
+            gh release upload $env:RELEASE_TAG $env:ASSET_PATH --clobber
+            gh release edit $env:RELEASE_TAG --notes $hinweis
+          } else {
+            gh release create $env:RELEASE_TAG `
+              --title "sqlClipboardFormatter $env:RELEASE_TAG (Windows x64)" `
+              --notes $hinweis `
+              $env:ASSET_PATH
+          }
+          Write-Host "Veroeffentlicht: $env:RELEASE_TAG"
