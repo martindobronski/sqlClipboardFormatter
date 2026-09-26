@@ -1,0 +1,152 @@
+# Laeuft start.bat auf echtem Windows aus.
+#
+# Die Testklasse StartSkriptTest startet bisher nur start.sh. start.bat war
+# ueberhaupt nie auf Windows gelaufen - geprueft wurde nur, dass die Datei
+# ASCII ist, CRLF hat und keine verbotenen Pipezeichen in for /f enthaelt. Das
+# ist eine statische Pruefung; sie sagt nichts darueber, ob cmd.exe das Skript
+# auch ausfuehrt. Dieser Workflow schliesst die Luecke.
+#
+# Ohne diesen Lauf fehlt fuer die Windows-Auslieferung die einfachste
+# Ueberpruefung, die es gibt.
+
+name: Windows-Pruefung
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "start.bat"
+      - "start.sh"
+      - "pom.xml"
+      - ".gitattributes"
+      - ".github/workflows/windows-pruefung.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  startbat:
+    name: start.bat auf windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 25 bereitstellen
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Git Bash in den PATH legen
+        shell: pwsh
+        # Ohne das loest "bash" unter Windows auf den WSL-Starter auf
+        # (C:\Windows\System32\bash.exe) und die StartSkriptTest laufen
+        # entweder in eine WSL-Umgebung ohne dieses Dateisystem oder
+        # scheitern mit "Distribution failed to start". GITHUB_PATH legt
+        # den Eintrag v an, vor System32.
+        run: |
+          $gitBin = "C:\Program Files\Git\bin"
+          if (-not (Test-Path "$gitBin\bash.exe")) {
+            throw "Git Bash nicht unter $gitBin gefunden"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $gitBin
+          Write-Host "Git Bash bereit: $gitBin\bash.exe"
+
+      - name: jmods muessen vorhanden sein
+        shell: pwsh
+        # Ohne jmods kann jlink kein Laufzeitbild bauen. Auf diesem Rechner
+        # liegt Temurin 25 ohne jmods vor, deshalb wird hier ausdruecklich
+        # abgebrochen statt stillschweigend ein unbrauchbares Bild zu bauen.
+        run: |
+          $jmods = Join-Path $env:JAVA_HOME "jmods"
+          if (-not (Test-Path $jmods)) {
+            throw "JDK ohne jmods unter $jmods - jlink kann damit nichts bauen"
+          }
+          $anzahl = (Get-ChildItem $jmods -Filter *.jmod).Count
+          Write-Host "jmods: $anzahl Dateien"
+          if ($anzahl -lt 10) {
+            throw "Nur $anzahl jmods gefunden - das ist zu wenig fuer ein Laufzeitbild"
+          }
+
+      - name: Kompletter Testlauf
+        shell: pwsh
+        # Verifiziert zugleich, dass die .gitattributes unter Windows greifen:
+        # startBat_windows_konventionen schlaegt fehl, falls die Datei ohne CR
+        # ausgecheckt wurde.
+        run: mvn -B clean verify
+
+      - name: start.bat -Pruefen ausfuehren
+        shell: pwsh
+        run: |
+          $ausgabe = cmd /c "start.bat -Pruefen" 2>&1
+          $ausgabe | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) {
+            throw "start.bat -Pruefen endete mit $LASTEXITCODE"
+          }
+          foreach ($pflicht in @("Java    :", "Maven   :", "Jar     :", "Bauen   :", "Argumente:")) {
+            if ($ausgabe -notmatch [regex]::Escape($pflicht)) {
+              throw "In der Ausgabe fehlt die Zeile: $pflicht"
+            }
+          }
+          Write-Host "start.bat -Pruefen hat alle Zeilen geliefert."
+
+      - name: start.bat startet die App wirklich
+        shell: pwsh
+        # Der eigentliche Beweis. Ein Skript kann alle statischen Pruefungen
+        # bestehen und beim Start trotzdem abbrechen. Deshalb wird der Prozess
+        # gestartet und danach gefragt, ob eine JVM laeuft.
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "start.log"
+          $prozess = Start-Process -FilePath "cmd.exe" `
+              -ArgumentList "/c", "start.bat" `
+              -PassThru -NoNewWindow `
+              -RedirectStandardOutput $log `
+              -RedirectStandardError "$log.err"
+          Write-Host "cmd gestartet: $($prozess.Id)"
+
+          $jvm = $null
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 2
+            $jvm = Get-Process -Name java -ErrorAction SilentlyContinue
+            if ($jvm) { break }
+            if ($prozess.HasExited) {
+              Write-Host "start.bat endete vorzeitig mit $($prozess.ExitCode)"
+              break
+            }
+          }
+
+          if (-not $jvm) {
+            Write-Host "--- start.log ---"
+            if (Test-Path $log) { Get-Content $log }
+            Write-Host "--- start.log.err ---"
+            if (Test-Path "$log.err") { Get-Content "$log.err" }
+            throw "keine JVM gestartet - die App laeuft nicht auf diesem Rechner"
+          }
+
+          Write-Host "JVM laeuft: PID $($jvm.Id -join ', ')"
+          $jvm | Select-Object Id, ProcessName | Format-Table | Out-Host
+
+          # Wieder beenden, der Runner soll nicht offen bleiben.
+          $jvm | Stop-Process -Force
+          if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
+          Write-Host "Beendet. start.bat startet die App auf Windows."
+
+      - name: Kurzfassung als Protokoll
+        if: always()
+        shell: pwsh
+        run: |
+          $jvm = java -version 2>&1
+          Write-Host "=== Java des Runners ==="
+          $jvm | ForEach-Object { Write-Host $_ }
+          $bat = Get-Item start.bat
+          Write-Host "=== start.bat ==="
+          Write-Host "Groesse: $($bat.Length) Bytes"
+          $roh = [System.IO.File]::ReadAllBytes($bat.FullName)
+          $crlf = 0
+          for ($i = 1; $i -lt $roh.Length; $i++) {
+            if ($roh[$i] -eq 10 -and $roh[$i - 1] -eq 13) { $crlf++ }
+          }
+          Write-Host "CRLF-Zeilen: $crlf"
+          if ($crlf -lt 20) { throw "start.bat hat kein CRLF (nur $crlf) - die .gitattributes greifen nicht" }

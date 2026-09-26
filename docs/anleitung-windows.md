@@ -7,6 +7,7 @@ Windows-Rechner benutzen wollen. Sie setzt keine Programmierkenntnisse voraus.
 > [anleitung-macos.md](anleitung-macos.md).
 
 > ### Stand der Prüfung
+> 
 > Diese Anleitung ist vollständig aus dem Skript `start.bat` herausgeschrieben
 > und an jeder Stelle mit dem Quelltext abgeglichen. Auf einem echten Windows-
 > Rechner ist es jedoch **noch nicht durchlaufen** — unter macOS lässt sich kein
@@ -48,11 +49,11 @@ Datenbankprogramm und keine Internetverbindung**.
 
 ## 2. Was Sie brauchen
 
-| | |
-|---|---|
-| **Java 17 oder neuer** | zwingend — das Programm ist in Java geschrieben |
-| **Maven** | nur nötig, wenn Sie das Programm **selbst übersetzen** wollen; zum Benutzen nicht nötig |
-| **PowerShell** | ist seit Windows 8 dabei und wird für die Prüfungen benutzt — müssen Sie nichts installieren |
+|                        |                                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| **Java 17 oder neuer** | zwingend — das Programm ist in Java geschrieben                                              |
+| **Maven**              | nur nötig, wenn Sie das Programm **selbst übersetzen** wollen; zum Benutzen nicht nötig      |
+| **PowerShell**         | ist seit Windows 8 dabei und wird für die Prüfungen benutzt — müssen Sie nichts installieren |
 
 Maven können Sie sich sparen: Ist das Programm einmal übersetzt, startet es
 auch ohne Maven. Auf einem Mac ist genau das nachgewiesen worden; im
@@ -113,13 +114,13 @@ Argumente: 0 an die JVM
 
 Die Zeilen bedeuten:
 
-| Zeile | Bedeutung |
-|---|---|
-| `Java` | gefundenes Java. „Fehler: kein Java gefunden" heißt: zurück zu Schritt 1 |
-| `Maven` | gefundenes Maven oder „nicht gefunden". Fehlt es, ist das beim ersten Übersetzen ein Problem, später nicht mehr |
-| `Jar` | die übersetzte Programmdatei. „fehlt" ist beim ersten Mal normal |
-| `Bauen` | ob beim Starten übersetzt werden muss |
-| `Argumente` | was an Java durchgereicht wird |
+| Zeile       | Bedeutung                                                                                                       |
+| ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `Java`      | gefundenes Java. „Fehler: kein Java gefunden" heißt: zurück zu Schritt 1                                        |
+| `Maven`     | gefundenes Maven oder „nicht gefunden". Fehlt es, ist das beim ersten Übersetzen ein Problem, später nicht mehr |
+| `Jar`       | die übersetzte Programmdatei. „fehlt" ist beim ersten Mal normal                                                |
+| `Bauen`     | ob beim Starten übersetzt werden muss                                                                           |
+| `Argumente` | was an Java durchgereicht wird                                                                                  |
 
 Steht bei `Jar` **fehlt**, übersetzen Sie einmal:
 
@@ -150,12 +151,12 @@ danach das Programm.
 
 ### Was die Schalter können
 
-| Befehl | Wirkung |
-|---|---|
-| `start.bat` | starten, übersetzt vorher bei Bedarf neu |
-| `start.bat -Neu` | vorher neu übersetzen, auch wenn schon alles aktuell ist |
-| `start.bat -Pruefen` | nur nachsehen, ob die Umgebung passt — startet nichts |
-| `start.bat -Xmx512m` | gibt 512 MB Speicher für das Programm frei |
+| Befehl               | Wirkung                                                  |
+| -------------------- | -------------------------------------------------------- |
+| `start.bat`          | starten, übersetzt vorher bei Bedarf neu                 |
+| `start.bat -Neu`     | vorher neu übersetzen, auch wenn schon alles aktuell ist |
+| `start.bat -Pruefen` | nur nachsehen, ob die Umgebung passt — startet nichts    |
+| `start.bat -Xmx512m` | gibt 512 MB Speicher für das Programm frei               |
 
 ## 6. Bedienung
 
@@ -169,10 +170,10 @@ zwischen dunkel und hell. Darunter das große Textfeld, rechts daneben die Auswa
 
 **Die Statuszeile ist das Einzige, was Ihnen sagt, ob die Knöpfe etwas tun.**
 
-| Inhalt des Feldes | Statuszeile | Knöpfe |
-|---|---|---|
-| leer | Bereit - Bitte SQL aus der Zwischenablage laden. | nur *Clipboard einlesen* |
-| sieht nach SQL aus | Bereit - Text sieht nach SQL aus. | alle frei |
+| Inhalt des Feldes        | Statuszeile                                                                    | Knöpfe                   |
+| ------------------------ | ------------------------------------------------------------------------------ | ------------------------ |
+| leer                     | Bereit - Bitte SQL aus der Zwischenablage laden.                               | nur *Clipboard einlesen* |
+| sieht nach SQL aus       | Bereit - Text sieht nach SQL aus.                                              | alle frei                |
 | sieht nicht nach SQL aus | ⚠ Der Text sieht nicht nach SQL aus. Formatieren und Schreiben sind blockiert. | nur *Clipboard einlesen* |
 
 Genau in diesem letzten Fall sind **SQL Formatieren** und **Ins Clipboard
@@ -183,12 +184,12 @@ was in der Zwischenablage steht.
 
 ### Die vier Knöpfe
 
-| Knopf | Wirkung |
-|---|---|
-| **Clipboard einlesen** | holt den Text aus Ihrer Zwischenablage in das Feld |
-| **SQL Formatieren** | formatiert den Text im Feld |
-| **Ins Clipboard schreiben** | legt den Text aus dem Feld in die Zwischenablage |
-| **Beenden** | beendet das Programm; steht rechts neben den anderen Knöpfen |
+| Knopf                       | Wirkung                                                      |
+| --------------------------- | ------------------------------------------------------------ |
+| **Clipboard einlesen**      | holt den Text aus Ihrer Zwischenablage in das Feld           |
+| **SQL Formatieren**         | formatiert den Text im Feld                                  |
+| **Ins Clipboard schreiben** | legt den Text aus dem Feld in die Zwischenablage             |
+| **Beenden**                 | beendet das Programm; steht rechts neben den anderen Knöpfen |
 
 **Das sind zwei Schritte, nicht einer:** *SQL Formatieren* legt nichts in die
 Zwischenablage. Erst *Ins Clipboard schreiben* tut das. So können Sie sich das
@@ -218,22 +219,22 @@ Ergebnis bekommen Sie in der Regel mit einer anderen Einstellung unter
 Für die allermeisten Fälle genügt **Standard SQL**. Wählen Sie eine andere
 Variante, wenn Ihr Server eigene Syntax benutzt:
 
-| Auswahl | Für |
-|---|---|
-| Standard SQL | allgemein, passt für die meisten Datenbanken |
-| PostgreSQL | PostgreSQL |
-| MySQL / MariaDB | MySQL, MariaDB |
-| SQL Server (T-SQL) | Microsoft SQL Server |
-| Oracle PL/SQL | Oracle, einschließlich PL/SQL-Blöcken |
-| IBM DB2 | IBM DB2 |
+| Auswahl            | Für                                          |
+| ------------------ | -------------------------------------------- |
+| Standard SQL       | allgemein, passt für die meisten Datenbanken |
+| PostgreSQL         | PostgreSQL                                   |
+| MySQL / MariaDB    | MySQL, MariaDB                               |
+| SQL Server (T-SQL) | Microsoft SQL Server                         |
+| Oracle PL/SQL      | Oracle, einschließlich PL/SQL-Blöcken        |
+| IBM DB2            | IBM DB2                                      |
 
 Rechts neben der Auswahl steht, was die Wahl für den Text im Feld bewirkt:
 
-| Anzeige | Bedeutung |
-|---|---|
-| `—` | noch kein Text im Feld |
-| Standard SQL genügt | Ihre Ausstellung ist egal, alle Varianten kommen zum gleichen Ergebnis |
-| wirksam: PostgreSQL, MySQL | mit diesen Varianten sieht das Ergebnis anders aus — hier lohnt die Wahl |
+| Anzeige                                       | Bedeutung                                                                                             |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `—`                                           | noch kein Text im Feld                                                                                |
+| Standard SQL genügt                           | Ihre Ausstellung ist egal, alle Varianten kommen zum gleichen Ergebnis                                |
+| wirksam: PostgreSQL, MySQL                    | mit diesen Varianten sieht das Ergebnis anders aus — hier lohnt die Wahl                              |
 | Text zu lang, um die Dialekte zu vergleichen. | über 4000 Zeichen wird nicht verglichen. Das ist nur eine Anzeige, **das Formatieren läuft trotzdem** |
 
 ### Zeilenumbrüche: Windows bleibt Windows
@@ -248,9 +249,9 @@ um, nur weil es bequemer wäre.
 
 So prüfen Sie, was in Ihrer Datei wirklich steht:
 
-| Editor | Wo Sie es sehen |
-|---|---|
-| **Notepad++** | *Ansicht → Symbol anzeigen → Zeilenende anzeigen* |
+| Editor                 | Wo Sie es sehen                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| **Notepad++**          | *Ansicht → Symbol anzeigen → Zeilenende anzeigen*                                      |
 | **Visual Studio Code** | die Anzeige `CRLF` oder `LF` unten in der Statusleiste, nach einem Klick auf die Datei |
 
 ### Hell oder dunkel
@@ -291,13 +292,13 @@ cd C:\Pfad\zu\sqlClipboardFormatter
 Was Sie dort sehen, sagt fast immer, woran es liegt. Die Meldungen, die das
 Skript ausgibt:
 
-| Meldung | Ursache |
-|---|---|
-| `Fehler: kein Java gefunden. Java 17 oder neuer installieren.` | Java fehlt oder ist zu alt — Schritt 3 |
-| `Fehler: Version in der pom.xml nicht gefunden.` | `pom.xml` fehlt oder ist beschädigt — der Ordner ist unvollständig |
-| `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Maven fehlt, obwohl noch nicht übersetzt wurde |
-| `Fehler: der Build ist fehlgeschlagen.` | Beim Übersetzen ging etwas schief — die ausführliche Meldung steht darüber |
-| `Fehler: "target\SqlClipboardFormatter-0.2.jar" fehlt trotz Bauvorgang.` | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
+| Meldung                                                                       | Ursache                                                                                                     |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `Fehler: kein Java gefunden. Java 17 oder neuer installieren.`                | Java fehlt oder ist zu alt — Schritt 3                                                                      |
+| `Fehler: Version in der pom.xml nicht gefunden.`                              | `pom.xml` fehlt oder ist beschädigt — der Ordner ist unvollständig                                          |
+| `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Maven fehlt, obwohl noch nicht übersetzt wurde                                                              |
+| `Fehler: der Build ist fehlgeschlagen.`                                       | Beim Übersetzen ging etwas schief — die ausführliche Meldung steht darüber                                  |
+| `Fehler: "target\SqlClipboardFormatter-0.2.jar" fehlt trotz Bauvorgang.`      | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
 
 ### „Java wurde nicht gefunden", obwohl Java installiert ist
 
@@ -326,16 +327,21 @@ Steht dort `Maven   : nicht gefunden`, ist keiner der drei Wege sichtbar.
 Prüfen Sie in dieser Reihenfolge:
 
 1. Ist `mvn.cmd` im Suchpfad? In einer neuen PowerShell:
+   
    ```powershell
    where.exe mvn
    ```
+   
    Findet der Befehl nichts, hilft nur der nächste Punkt.
 2. Ist `MAVEN_HOME` gesetzt und zeigt auf den Ordner **mit** `bin` darin?
+   
    ```powershell
    $env:MAVEN_HOME
    ```
+   
    Bei einem leeren Ergebnis hilft nur Punkt 3.
 3. Tragen Sie Maven im Suchpfad ein, oder setzen Sie `MAVEN_HOME`:
+   
    ```powershell
    [Environment]::SetEnvironmentVariable("MAVEN_HOME", "C:\tools\apache-maven-3.9.9", "User")
    ```
