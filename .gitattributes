@@ -1,0 +1,22 @@
+# Batch-Dateien brauchen CRLF im Arbeitsverzeichnis.
+#
+# Wichtig: Im Repository liegen sie mit LF, im ausgecheckten Arbeitsverzeichnis
+# immer mit CRLF - auf jedem System. Ohne diese Regel nimmt Git die Endungen
+# aus core.autocrlf, und das fuehrt hier zu zwei verschiedenen Fehlern:
+#
+#   core.autocrlf=input  -> beim Commit werden CRLF zu LF, der frische Clone
+#                           auf Windows bekommt ein start.bat ohne CR
+#   core.autocrlf=true   -> auf macOS werden die Shell-Skripte beim Checkout
+#                           staendig zu CRLF
+#
+# cmd.exe erwartet CRLF. start.bat ist aus dem Grund so geschrieben worden.
+*.bat text eol=crlf
+
+# start.sh wird per Doppelklick auf macOS ausgefuehrt, wo der Kernel ein
+# CRLF-Skript nicht startet ("bad interpreter"). Deshalb ausdruecklich LF.
+*.sh text eol=lf
+
+# Java- und XML-Dateien bleiben unangetastet: CRLF darin ist harmlos, und
+# Maven liest sie mit der in der pom.xml gesetzten Kodierung.
+*.java text
+*.xml text
