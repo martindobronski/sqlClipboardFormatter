@@ -22,6 +22,10 @@ on:
       tag:
         description: "Tag, unter dem veroeffentlicht wird (z.B. v0.2)"
         required: true
+      veroeffentlichen:
+        description: "false = nur bauen und pruefen, nichts veroeffentlichen"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -219,6 +223,12 @@ jobs:
           }
 
       - name: Release veroeffentlichen
+        # Beim manuellen Start laesst sich das Abschalten. Der ganze Weg bis
+        # hierhin - Bauen, Starten ohne System-Java, ZIP packen - laeuft dann
+        # trotzdem, nur das Hochladen entfaellt. Ohne diese Moeglichkeit
+        # laesst sich der Workflow nur gefaehrlich testen, denn jeder Lauf
+        # veroeffentlicht sonst ein Release.
+        if: github.event_name != 'workflow_dispatch' || inputs.veroeffentlichen
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
