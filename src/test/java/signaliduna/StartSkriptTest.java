@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -80,6 +81,58 @@ class StartSkriptTest {
             String inhalt = Files.readString(new File(skript).toPath(), StandardCharsets.ISO_8859_1);
             assertFalse(inhalt.matches("(?s).*SqlClipboardFormatter-\\d+\\.\\w+.*"),
                     skript + " enthaelt einen fest eingetragenen Jar-Namen");
+        }
+    }
+
+    @Test
+    @DisplayName("beide Skripte kennen dieselben Schalter")
+    void schalter_der_sind_gleich() throws Exception {
+        // start.sh kannte -Pruefen, start.bat nicht. Wer auf Windows danach
+        // greift, landet bei Java in "Unrecognized option: -Pruefen" - das
+        // sieht nach einem Skriptfehler aus und ist keiner.
+        for (String skript : List.of("start.sh", "start.bat")) {
+            String inhalt = Files.readString(new File(skript).toPath(), StandardCharsets.ISO_8859_1);
+            for (String schalter : List.of("-Neu", "-Pruefen")) {
+                // Nicht nur "kommt irgendwo vor": der Schalter muss an einem
+                // Vergleich haengen. Ein reiner Kommentar-Treffer liess den Test
+                // gruen, nachdem die Zeile entfernt war - der Test waere dann
+                // genau fuer den Fehler blind gewesen, den er verhindern soll.
+                Pattern vergleich =
+                        java.util.regex.Pattern.compile("=\\s*\"" + Pattern.quote(schalter));
+                assertTrue(vergleich.matcher(inhalt).find(),
+                        skript + " vergleicht kein Argument mit " + schalter);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("start.bat enthaelt kein unescapetes Pipezeichen in for /f")
+    void startBat_ohne_pipe_in_for_f() throws Exception {
+        // Innerhalb von for /f muss jedes | als ^| escaped werden. Ein
+        // Pipebruch in einer Zeilenfortsetzung beendet cmd.exe ohne Meldung -
+        // das Skript haette an dieser Stelle zwei eigene Regeln verletzt.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        boolean inForF = false;
+        for (int i = 0; i < zeilen.size(); i++) {
+            String zeile = zeilen.get(i);
+            if (zeile.trim().isEmpty() || zeile.trim().toLowerCase().startsWith("rem")) {
+                continue;
+            }
+            if (zeile.contains("for /f")) {
+                inForF = true;
+            }
+            if (inForF && zeile.contains("|") && !zeile.contains("^|")) {
+                // Pipes innerhalb einer if-Zeile sind harmlos, hier aber
+                // genau die Stelle, an der for /f sie als Kommando trennt.
+                final String nummer = String.valueOf(i + 1);
+                final String fund = zeile.strip();
+                assertTrue(false, () -> "start.bat Zeile " + nummer
+                        + " hat ein unescapetes | in for /f: " + fund);
+            }
+            if (inForF && zeile.strip().endsWith(")") && !zeile.contains("for /f")) {
+                inForF = false;
+            }
         }
     }
 

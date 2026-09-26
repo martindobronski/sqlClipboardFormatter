@@ -20,8 +20,14 @@ rem
 rem Gelesen wird die erste <version>-Zeile, das ist die Projektversion; die
 rem Abhaengigkeiten stehen darunter. sed gibt es unter Windows nicht, daher
 rem PowerShell - es ist ab Windows 8 vorhanden, und Java 17 laeuft ab Windows 8.
+rem
+rem Ohne Pipezeichen, aus demselben Grund wie bei der Veraltungspruefung
+rem weiter unten: innerhalb von for /f muss jedes | als ^| escaped werden, und
+rem ein Pipebruch in einer Zeilenfortsetzung beendet das Skript ohne Meldung.
+rem [regex]::Match liefert den ersten Treffer direkt - die Kette aus
+rem Select-String und Select-Object laesst sich damit einsparen.
 set "VERSION="
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "((Select-String -Path pom.xml -Pattern '<version>([^<]+)</version>' | Select-Object -First 1).Matches[0].Groups[1].Value)" 2^>nul`) do (
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "[regex]::Match((Get-Content -Raw pom.xml),'<version>([^<]+)</version>').Groups[1].Value" 2^>nul`) do (
     if not defined VERSION set "VERSION=%%v"
 )
 if not defined VERSION (
@@ -32,6 +38,8 @@ set "JAR=target\SqlClipboardFormatter-%VERSION%.jar"
 set "NEUBAUEN="
 set "ZUSATZ="
 set "BAUEN="
+set "PRUEFEN="
+set "ANZAHL=0"
 
 rem --- Argumente ------------------------------------------------------------
 rem Nicht "if ... set ... & shift & goto": das & trennt die Befehle
@@ -40,11 +48,18 @@ rem Argumente stillschweigend verschluckt.
 :argumente
 if "%~1"=="" goto javaSuchen
 if /i "%~1"=="-Neu" goto neu
+if /i "%~1"=="-Pruefen" goto pruefen
+if /i "%~1"=="--pruefen" goto pruefen
 set "ZUSATZ=%ZUSATZ% %1"
+set /a ANZAHL+=1
 shift
 goto argumente
 :neu
 set "NEUBAUEN=1"
+shift
+goto argumente
+:pruefen
+set "PRUEFEN=1"
 shift
 goto argumente
 
@@ -78,8 +93,23 @@ if defined NEUBAUEN set "BAUEN=1"
 if not defined NEUBAUEN if not exist "%JAR%" set "BAUEN=1"
 if not defined NEUBAUEN if exist "%JAR%" call :istVeraltet
 
+if defined PRUEFEN goto pruefAusgabe
 if defined BAUEN goto bauen
 goto starten
+
+rem --- Pruefmodus -----------------------------------------------------------
+rem Gegenstueck zu start.sh -Pruefen: Java, Maven und der abgeleitete
+rem Jar-Name werden ausgegeben, ohne gebaut oder gestartet zu werden. Ohne
+rem diesen Modus waere auf Windows nur am Fenster erkennbar, ob etwas
+rem funktioniert hat.
+:pruefAusgabe
+echo Java    : %JAVA%
+if defined MVN (echo Maven   : %MVN%) else (echo Maven   : nicht gefunden)
+if exist "%JAR%" (echo Jar     : %JAR% - vorhanden) else (echo Jar     : %JAR% - fehlt)
+if defined BAUEN (echo Bauen   : ja) else (echo Bauen   : falls Quellen neuer)
+echo Argumente: %ANZAHL% an die JVM
+if defined ZUSATZ echo             %ZUSATZ%
+exit /b 0
 
 rem --- Bauen ----------------------------------------------------------------
 :bauen
