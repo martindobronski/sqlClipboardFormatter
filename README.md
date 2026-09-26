@@ -10,6 +10,18 @@ oder ausführen will.
 - **Keine Laufzeit-Abhängigkeiten außer der JVM** — alle Bibliotheken sind ins Jar
   gepackt
 
+**Wer das Programm benutzen will, statt es weiterzubauen, liest die
+Anleitung für sein System:**
+
+- **[Anleitung für macOS](docs/anleitung-macos.md)** — Terminal, Start per
+  Doppelklick, Raycast-Hotkey
+- **[Anleitung für Windows](docs/anleitung-windows.md)** — `start.bat`,
+  Tastenkürzel, Fehlermeldungen und was sie bedeuten
+
+Diese beiden Anleitungen richten sich an Nutzer ohne Programmierkenntnisse.
+Alles Weitere auf dieser Seite richtet sich an Menschen, die am Programm
+arbeiten.
+
 ---
 
 ## Inhalt
@@ -50,14 +62,14 @@ wenn das Jar noch nicht gebaut ist.
 
 ## Bedienung
 
-| Element | Wirkung |
-|---|---|
-| **Clipboard einlesen** | Holt den Text aus der Zwischenablage ins Textfeld. |
-| **SQL Formatieren** | Formatiert den Text im Feld. Nur aktiv, wenn er nach SQL aussieht. |
-| **Ins Clipboard schreiben** | Schreibt den Text aus dem Feld zurück. Nur aktiv, wenn er nach SQL aussieht. |
-| **Dialect** | Legt fest, wie der Text interpretiert wird. |
+| Element                          | Wirkung                                                                                                  |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Clipboard einlesen**           | Holt den Text aus der Zwischenablage ins Textfeld.                                                       |
+| **SQL Formatieren**              | Formatiert den Text im Feld. Nur aktiv, wenn er nach SQL aussieht.                                       |
+| **Ins Clipboard schreiben**      | Schreibt den Text aus dem Feld zurück. Nur aktiv, wenn er nach SQL aussieht.                             |
+| **Dialect**                      | Legt fest, wie der Text interpretiert wird.                                                              |
 | **Theme-Schalter** (oben rechts) | Wechselt zwischen dunkel und hell. Das Theme wird nicht gespeichert, die Anwendung startet immer dunkel. |
-| **Beenden** | Schliesst das Fenster. |
+| **Beenden**                      | Schliesst das Fenster.                                                                                   |
 
 Statusmeldungen unten links verschwinden nach vier Sekunden von selbst. Warnungen
 und Fehler bleiben stehen — eine Meldung über möglichen Datenverlust darf nicht
@@ -99,14 +111,14 @@ vom früheren, einfacheren Formatter nicht wie ein Stilbruch wirkt.
 
 ### Die sechs Dialekte
 
-| Auswahl | Kurzform |
-|---|---|
-| Standard SQL | `Standard` |
-| PostgreSQL | `PostgreSQL` |
-| MySQL / MariaDB | `MySQL` |
-| SQL Server (T-SQL) | `T-SQL` |
-| Oracle PL/SQL | `PL/SQL` |
-| IBM DB2 | `DB2` |
+| Auswahl            | Kurzform     |
+| ------------------ | ------------ |
+| Standard SQL       | `Standard`   |
+| PostgreSQL         | `PostgreSQL` |
+| MySQL / MariaDB    | `MySQL`      |
+| SQL Server (T-SQL) | `T-SQL`      |
+| Oracle PL/SQL      | `PL/SQL`     |
+| IBM DB2            | `DB2`        |
 
 ### Der Fallback, und wann er greift
 
@@ -174,11 +186,11 @@ drin.
 
 Einzelne Schritte:
 
-| Befehl | Wirkung |
-|---|---|
-| `mvn compile` | Kompilieren |
-| `mvn test` | Tests ausführen |
-| `mvn package` | Jar bauen |
+| Befehl             | Wirkung                                               |
+| ------------------ | ----------------------------------------------------- |
+| `mvn compile`      | Kompilieren                                           |
+| `mvn test`         | Tests ausführen                                       |
+| `mvn package`      | Jar bauen                                             |
 | `mvn clean verify` | Alles, wie oben — das, was vor dem Push laufen sollte |
 
 Direkt starten ohne Skript:
@@ -320,11 +332,11 @@ testbar. `FormatterPanel` hält die Bedienlogik und das Layout.
 
 ### Abhängigkeiten
 
-| Bibliothek | Version | Wofür |
-|---|---|---|
-| [sql-formatter](https://github.com/sql-formatter-org/sql-formatter) | 2.0.5 | Das Formatieren selbst |
-| [FlatLaf](https://github.com/JFormDesigner/FlatLaf) | 3.2.5 | Erscheinungsbild unter Swing |
-| JUnit Jupiter | 5.10.2 | Nur zum Testen |
+| Bibliothek                                                          | Version | Wofür                        |
+| ------------------------------------------------------------------- | ------- | ---------------------------- |
+| [sql-formatter](https://github.com/sql-formatter-org/sql-formatter) | 2.0.5   | Das Formatieren selbst       |
+| [FlatLaf](https://github.com/JFormDesigner/FlatLaf)                 | 3.2.5   | Erscheinungsbild unter Swing |
+| JUnit Jupiter                                                       | 5.10.2  | Nur zum Testen               |
 
 ---
 
@@ -333,9 +345,9 @@ testbar. `FormatterPanel` hält die Bedienlogik und das Layout.
 Die Versionsnummer steht **ausschließlich** in `pom.xml`. Alles andere leitet sich
 daraus ab:
 
-| Wer | Woher |
-|---|---|
-| `start.sh`, `start.bat` | lesen die erste `<version>`-Zeile aus der pom.xml für den Jar-Namen |
+| Wer                      | Woher                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `start.sh`, `start.bat`  | lesen die erste `<version>`-Zeile aus der pom.xml für den Jar-Namen                                   |
 | Versionszeile in der App | `version.properties`, von Maven aus der pom.xml erzeugt; im gepackten Jar zusätzlich aus dem Manifest |
 
 Anheben heißt deshalb nur eines:
@@ -376,14 +388,14 @@ mvn test -Dtest=SqlPrettyFormatterTest   # eine Klasse
 
 **193 Tests**, verteilt auf:
 
-| Klasse | Tests | Wofür |
-|---|---|---|
-| `FormatterPanelTest` | 58 | Layout, Themes, Toasts, Freischaltung, Reentranz |
-| `SqlPrettyFormatterTest` | 47 | Formatierregeln, Operatorerhalt, Zeilenenden |
-| `SqlFormatServiceTest` | 44 | Normalisierung, Literal- und Bezeichnerschutz |
-| `SqlDetectorTest` | 33 | SQL-Erkennung, parametrisiert über Start- und Nicht-Startwörter |
-| `StartSkriptTest` | 8 | Startskripte: Verhalten, Konventionen, Schalterparität |
-| `ClipboardServiceTest` | 3 | Zwischenablage lesen und schreiben |
+| Klasse                   | Tests | Wofür                                                           |
+| ------------------------ | ----- | --------------------------------------------------------------- |
+| `FormatterPanelTest`     | 58    | Layout, Themes, Toasts, Freischaltung, Reentranz                |
+| `SqlPrettyFormatterTest` | 47    | Formatierregeln, Operatorerhalt, Zeilenenden                    |
+| `SqlFormatServiceTest`   | 44    | Normalisierung, Literal- und Bezeichnerschutz                   |
+| `SqlDetectorTest`        | 33    | SQL-Erkennung, parametrisiert über Start- und Nicht-Startwörter |
+| `StartSkriptTest`        | 8     | Startskripte: Verhalten, Konventionen, Schalterparität          |
+| `ClipboardServiceTest`   | 3     | Zwischenablage lesen und schreiben                              |
 
 Zum Nachzählen, weil die Zahl sonst leicht danebenliegt: `mvn test` meldet für
 `FormatterPanelTest` in der Zusammenfassung `Tests run: 0`. Das ist kein Fehler,
