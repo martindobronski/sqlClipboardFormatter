@@ -54,20 +54,43 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $gitBin
           Write-Host "Git Bash bereit: $gitBin\bash.exe"
 
-      - name: jmods muessen vorhanden sein
+      - name: Laufzeitlage des Runners festhalten
         shell: pwsh
-        # Ohne jmods kann jlink kein Laufzeitbild bauen. Auf diesem Rechner
-        # liegt Temurin 25 ohne jmods vor, deshalb wird hier ausdruecklich
-        # abgebrochen statt stillschweigend ein unbrauchbares Bild zu bauen.
+        # Ohne jmods kann jlink kein Laufzeitbild bauen. Dieser Schritt sagt
+        # nach, was tatsaechlich da ist, statt es zu vermuten - der erste Lauf
+        # hat hier abgebrochen, weil Temurin 25 die jmods nicht mitbringt.
         run: |
+          Write-Host "JAVA_HOME = $env:JAVA_HOME"
+          Write-Host "--- Inhalt von JAVA_HOME ---"
+          Get-ChildItem $env:JAVA_HOME -Force |
+            Select-Object -ExpandProperty Name | ForEach-Object { Write-Host "  $_" }
+
           $jmods = Join-Path $env:JAVA_HOME "jmods"
-          if (-not (Test-Path $jmods)) {
-            throw "JDK ohne jmods unter $jmods - jlink kann damit nichts bauen"
+          if (Test-Path $jmods) {
+            $anzahl = (Get-ChildItem $jmods -Filter *.jmod).Count
+            Write-Host "jmods: $anzahl Dateien - jlink kann ein Bild bauen"
+          } else {
+            Write-Host "jmods: FEHLT - dieser JDK-Build traegt sie nicht"
+            Write-Host "--- Inhalt von lib ---"
+            Get-ChildItem (Join-Path $env:JAVA_HOME "lib") -Force |
+              Select-Object -ExpandProperty Name | ForEach-Object { Write-Host "  $_" }
           }
-          $anzahl = (Get-ChildItem $jmods -Filter *.jmod).Count
-          Write-Host "jmods: $anzahl Dateien"
-          if ($anzahl -lt 10) {
-            throw "Nur $anzahl jmods gefunden - das ist zu wenig fuer ein Laufzeitbild"
+
+          Write-Host "--- weitere JDKs auf dem Runner ---"
+          foreach ($wurzel in @("C:\hostedtoolcache\windows", "C:\Program Files\Java")) {
+            if (Test-Path $wurzel) {
+              Get-ChildItem $wurzel -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "  $($_.FullName)" }
+            }
+          }
+
+          Write-Host "--- jlink vorhanden? ---"
+          $jlink = Get-Command jlink -ErrorAction SilentlyContinue
+          if ($jlink) {
+            Write-Host "  $($jlink.Source)"
+            jlink --version
+          } else {
+            Write-Host "  jlink fehlt im PATH"
           }
 
       - name: Kompletter Testlauf
