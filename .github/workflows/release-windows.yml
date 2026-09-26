@@ -229,9 +229,13 @@ jobs:
           $pfadzip = "$pfad"
           $inhalt = [IO.Compression.ZipFile]::OpenRead($pfadzip)
           try {
-            $namen = $inhalt.Entries | ForEach-Object { $_.FullName }
-            $wurzel = $namen | ForEach-Object { ($_ -split '/')[0] } |
-                      Sort-Object -Unique
+            # Wichtig: mit @() erzwingen. Liefert die Liste nur einen Wert,
+            # ist das Ergebnis sonst ein String, und $x[0] liefert dann das
+            # erste Zeichen statt des ersten Eintrags. Genau das hat die erste
+            # Fassung dieser Pruefung falsch durchgewinkt.
+            $namen  = @($inhalt.Entries | ForEach-Object { $_.FullName })
+            $wurzel = @($namen | ForEach-Object { ($_ -split '/')[0] } |
+                        Sort-Object -Unique)
             if ($wurzel.Count -ne 1 -or $wurzel[0] -ne $name) {
               throw "ZIP enthaelt unerwartete Wurzelordner: $($wurzel -join ', ')"
             }
@@ -242,8 +246,9 @@ jobs:
                 throw "ZIP fehlt: $pflicht"
               }
             }
-            if ($namen | Where-Object { $_ -match '__MACOSX|\.DS_Store' }) {
-              throw "ZIP enthaelt Systemmuell"
+            $muell = @($namen | Where-Object { $_ -match '__MACOSX|\.DS_Store' })
+            if ($muell.Count -gt 0) {
+              throw "ZIP enthaelt Systemmuell: $($muell[0])"
             }
             Write-Host "Gegenprobe: $($namen.Count) Eintraege, Wurzel $($wurzel[0]), Doku unter docs/ - alles wie dokumentiert."
           } finally {
