@@ -93,8 +93,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "start.bat -Pruefen endete mit $LASTEXITCODE"
           }
+          # Der Text wird zusammengehaengt geprueft. -notmatch auf ein Array
+          # liefert die nicht passenden Elemente zurueck - bei fünf Zeilen
+          # gewinnt damit immer das Array der vier uebrigen, und der Schritt
+          # waere bei korrekter Ausgabe fehlgeschlagen.
+          $text = ($ausgabe | Out-String)
           foreach ($pflicht in @("Java    :", "Maven   :", "Jar     :", "Bauen   :", "Argumente:")) {
-            if ($ausgabe -notmatch [regex]::Escape($pflicht)) {
+            if (-not $text.Contains($pflicht)) {
               throw "In der Ausgabe fehlt die Zeile: $pflicht"
             }
           }
