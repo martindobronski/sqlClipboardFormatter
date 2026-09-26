@@ -30,11 +30,19 @@ set "VERSION="
 for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "[regex]::Match((Get-Content -Raw pom.xml),'<version>([^<]+)</version>').Groups[1].Value" 2^>nul`) do (
     if not defined VERSION set "VERSION=%%v"
 )
-if not defined VERSION (
-    echo Fehler: Version in der pom.xml nicht gefunden. 1>&2
-    exit /b 1
-)
-set "JAR=target\SqlClipboardFormatter-%VERSION%.jar"
+rem Im Repository steht der Name im pom.xml. Im Release-ZIP gibt es keine
+rem pom.xml - dort benennt das Jar selbst die Version. Ohne diesen zweiten
+rem Weg waere das Starten eines entpackten ZIPs unmoeglich, ohne genau die
+rem Datei mitzuschleppen, die ein Endnutzer nicht braucht.
+set "JAR="
+if defined VERSION if exist "target\SqlClipboardFormatter-%VERSION%.jar" set "JAR=target\SqlClipboardFormatter-%VERSION%.jar"
+rem Eine unpassende Musterdatei wird von der Pruefung oben verworfen; das
+rem Muster selbst ist nur ein unveraenderter Text und keine Datei.
+if not defined JAR for %%j in (target\SqlClipboardFormatter-*.jar) do if exist "%%j" set "JAR=%%j"
+rem Kein Abbruch, wenn nichts gefunden wurde: "-Pruefen" soll genau diesen
+rem Zustand melden und nicht an ihm scheitern. Der Startpfad weiter unten
+rem faengt das sauber ab.
+if not defined JAR set "JAR=target\SqlClipboardFormatter-%VERSION%.jar"
 set "NEUBAUEN="
 set "ZUSATZ="
 set "BAUEN="
@@ -65,13 +73,29 @@ goto argumente
 
 rem --- Java suchen ----------------------------------------------------------
 :javaSuchen
-rem Reihenfolge: JAVA_HOME, dann der erste java im PATH, dann Fehler. Ohne
-rem JAVA_HOME liegt auf Windows oft etwas unter "%ProgramFiles%\Java", aber
-rem der Pfad aendert sich mit jedem JDK-Update - ein veralteter Pfad ist
-rem schlimmer als eine klare Meldung.
+rem Reihenfolge: mitgelieferte Laufzeit, SQLFORMATTER_JAVA, JAVA_HOME, PATH.
+rem Die mitgelieferte gewinnt, weil sie die einzige ist, von der wir wissen,
+rem dass sie zum Jar passt. Ohne JAVA_HOME liegt auf Windows oft etwas unter
+rem "%ProgramFiles%\Java", aber der Pfad aendert sich mit jedem JDK-Update -
+rem ein veralteter Pfad ist schlimmer als eine klare Meldung.
+rem
+rem Das && muss durchgehendketten sein. Mit einem & davor liefe das zweite
+rem set auch dann, wenn -version fehlschlaegt - Java und QUELLE waeren dann
+rem nicht mehr dasselbe. Jeder Zweig prueft selbst mit -version, damit ein
+rem halb entpackter Download den Start nicht verhindert, obwohl ein zweites
+rem Java installiert ist.
+rem
+rem >nul und nicht >/dev/null: das ist die Umleitung nach /dev/null aus der
+rem Unix-Welt. cmd.exe legt stattdessen eine Datei an und verweigert bei
+rem fehlendem Verzeichnis den Dienst - die ganze Zeile wird dann gar nicht
+rem erst ausgefuehrt. Wer nur Java im PATH hatte, bekam so "kein Java
+rem gefunden", obwohl Java installiert war.
 set "JAVA="
-if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" set "JAVA=%JAVA_HOME%\bin\java.exe"
-if not defined JAVA for /f "delims=" %%j in ('where java 2^>nul') do if not defined JAVA "%%j" -version >nul 2>&1 && set "JAVA=%%j"
+set "QUELLE="
+if exist "%~dp0jre\bin\java.exe" "%~dp0jre\bin\java.exe" -version >nul 2>&1 && set "JAVA=%~dp0jre\bin\java.exe" && set "QUELLE=mitgeliefert"
+if not defined JAVA if defined SQLFORMATTER_JAVA if exist "%SQLFORMATTER_JAVA%" "%SQLFORMATTER_JAVA%" -version >nul 2>&1 && set "JAVA=%SQLFORMATTER_JAVA%" && set "QUELLE=SQLFORMATTER_JAVA"
+if not defined JAVA if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" "%JAVA_HOME%\bin\java.exe" -version >nul 2>&1 && set "JAVA=%JAVA_HOME%\bin\java.exe" && set "QUELLE=JAVA_HOME"
+if not defined JAVA for /f "delims=" %%j in ('where java 2^>nul') do if not defined JAVA "%%j" -version >nul 2>&1 && set "JAVA=%%j" && set "QUELLE=PATH"
 if not defined JAVA (
     echo Fehler: kein Java gefunden. Java 17 oder neuer installieren. 1>&2
     echo         Falls installiert: JAVA_HOME setzen oder Java in den PATH aufnehmen. 1>&2
@@ -110,7 +134,9 @@ rem Jar-Name werden ausgegeben, ohne gebaut oder gestartet zu werden. Ohne
 rem diesen Modus waere auf Windows nur am Fenster erkennbar, ob etwas
 rem funktioniert hat.
 :pruefAusgabe
-echo Java    : %JAVA%
+rem Die Quelle mit anzeigen: "Java: \pfad\zum\java" allein laesst offen, ob
+rem das nun das mitgelieferte ist oder ein irgendwo installiertes.
+echo Java    : %JAVA%  (%QUELLE%)
 if defined MVN (echo Maven   : %MVN%) else (echo Maven   : nicht gefunden)
 if exist "%JAR%" (echo Jar     : %JAR% - vorhanden) else (echo Jar     : %JAR% - fehlt)
 if defined BAUEN (echo Bauen   : ja) else (echo Bauen   : falls Quellen neuer)

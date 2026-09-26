@@ -20,11 +20,177 @@ on:
       - "start.sh"
       - "pom.xml"
       - ".gitattributes"
+      - ".gitignore"
       - ".github/workflows/windows-pruefung.yml"
   pull_request:
   workflow_dispatch:
 
 jobs:
+  # Der zweite Job beweist, was der erste nicht kann: dass die App auch dann
+  # startet, wenn es auf dem Rechner kein Java gibt. Er legt dafuer genau die
+  # Verzeichnisstruktur an, die das Release-ZIP hat - start.bat, jre/ und das
+  # fertige Jar, ohne pom.xml, ohne src/ und ohne Maven.
+  mitgelieferte-laufzeit:
+    name: Release-Aufbau ohne System-Java
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 25 bereitstellen
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Temurin-JRE nach jre/ entpacken
+        shell: pwsh
+        # Feste Version und feste Pruefsumme. "latest" waere bequemer, aber
+        # dann aendert sich die Lieferung ohne dass jemand es im Diff sieht -
+        # und ein fremder Download ohne Pruefsumme ist keine Lieferung, die man
+        # einem Endnutzer zumuten sollte. Stand: 25.0.4+101, die LTS-Linie.
+        env:
+          JRE_URL: "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jre_x64_windows_hotspot_25.0.4.1_1.zip"
+          JRE_SHA256: "4c95451cea98556def2c54f7782933f52a26d4a36bd85e1d59f0364464828b07"
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP "jre.zip"
+          Write-Host "Lade die Temurin-JRE"
+          Invoke-WebRequest -Uri $env:JRE_URL -OutFile $cache
+          $groesse = (Get-Item $cache).Length
+          Write-Host ("Download: {0:N1} MB" -f ($groesse / 1MB))
+
+          $ist = (Get-FileHash -Path $cache -Algorithm SHA256).Hash.ToLower()
+          if ($ist -ne $env:JRE_SHA256) {
+            throw "Pruefsumme weicht ab. erwartet $env:JRE_SHA256, bekommen $ist"
+          }
+          Write-Host "Pruefsumme stimmt."
+
+          $entpack = Join-Path $env:RUNNER_TEMP "jre-ausgepackt"
+          Expand-Archive -Path $cache -DestinationPath $entpack -Force
+          # Das ZIP enthaelt ein einzelnes Wurzelverzeichnis, das muss weg,
+          # damit danach jre/bin/java.exe liegt und nicht jre/jdk-25.../bin/...
+          $wurzel = Get-ChildItem $entpack -Directory | Select-Object -First 1
+          if (-not $wurzel) { throw "das Archiv enthaelt kein Wurzelverzeichnis" }
+          Move-Item $wurzel.FullName (Join-Path $env:GITHUB_WORKSPACE "jre")
+          Remove-Item $entpack -Recurse -Force
+          & ".\jre\bin\java.exe" -version
+
+      - name: Jar bauen
+        run: mvn -B -DskipTests package
+
+      - name: Release-Verzeichnis nachbauen
+        shell: pwsh
+        # Genau das, was spaeter im Release-ZIP liegt: kein pom.xml, kein src/,
+        # kein Maven. Wer das nicht nachstellt, prueft den Entwicklerstand und
+        # nicht das, was Nutzer bekommen.
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP "release"
+          Remove-Item $ziel -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $ziel | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $ziel "target") | Out-Null
+
+          Copy-Item start.bat $ziel
+          Copy-Item -Recurse jre $ziel
+          Copy-Item target\SqlClipboardFormatter-*.jar (Join-Path $ziel "target")
+          Copy-Item README.md $ziel
+
+          if (Test-Path (Join-Path $ziel "pom.xml")) { throw "pom.xml gehoert nicht ins ZIP" }
+          if (Test-Path (Join-Path $ziel "src")) { throw "src/ gehoert nicht ins ZIP" }
+          Write-Host "Aufgebaut: $ziel"
+          & (Join-Path $ziel "jre\bin\java.exe") -version
+
+      - name: System-Java unsichtbar machen
+        shell: pwsh
+        # Der eigentliche Beweis. Ab hier ist start.bat auf jre/ angewiesen:
+        # kein JAVA_HOME, kein java im PATH, kein Maven. Startet die App
+        # trotzdem, kann sie nicht an einem System-Java haengen.
+        run: |
+          $neu = @()
+          foreach ($eintrag in ($env:PATH -split ';')) {
+            if ($eintrag -and $eintrag -notmatch '(?i)java|jdk|temurin|hostedtoolcache') {
+              $neu += $eintrag
+            }
+          }
+          "PATH=$($neu -join ';')" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "JAVA_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "MAVEN_HOME=" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Verbleibender PATH:"
+          $env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { Write-Host "  $_" }
+
+      - name: "Kontrolle: es gibt wirklich kein Java mehr"
+        shell: pwsh
+        run: |
+          Write-Host "JAVA_HOME = '$env:JAVA_HOME'"
+          $gefunden = Get-Command java -ErrorAction SilentlyContinue
+          if ($gefunden) { throw "java ist weiterhin auffindbar: $($gefunden.Source)" }
+          $rest = Get-ChildItem C:\ -Filter java.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+                  Where-Object { $_.FullName -notlike "$env:RUNNER_TEMP\release\*" } |
+                  Select-Object -First 3
+          if ($rest) {
+            $rest | ForEach-Object { Write-Host "  ausserhalb des Release: $($_.FullName)" }
+            throw "es gibt noch eine java.exe ausserhalb des Release-Verzeichnisses"
+          }
+          Write-Host "Kein Java ausserhalb des Release-Verzeichnisses. Die Belege gelten."
+
+      - name: start.bat nimmt die mitgelieferte Laufzeit
+        shell: pwsh
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP "release"
+          $ausgabe = cmd /c "cd /d `"$ziel`" && start.bat -Pruefen" 2>&1
+          $ausgabe | ForEach-Object { Write-Host $_ }
+          $text = ($ausgabe | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "start.bat -Pruefen endete mit $LASTEXITCODE" }
+          if (-not $text.Contains("(mitgeliefert)")) {
+            throw "start.bat hat die mitgelieferte Laufzeit nicht genommen"
+          }
+          if (-not $text.Contains("jre\bin\java.exe")) {
+            throw "die genutzte Laufzeit liegt nicht im jre-Ordner"
+          }
+          Write-Host "start.bat nutzt die mitgelieferte Laufzeit."
+
+      - name: die App startet ohne System-Java
+        shell: pwsh
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP "release"
+          $log = Join-Path $env:RUNNER_TEMP "release-start.log"
+          $prozess = Start-Process -FilePath "cmd.exe" `
+              -ArgumentList "/c", "cd /d `"$ziel`" && start.bat" `
+              -PassThru -NoNewWindow `
+              -RedirectStandardOutput $log `
+              -RedirectStandardError "$log.err"
+          Write-Host "cmd gestartet: $($prozess.Id)"
+
+          $jvm = $null
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 2
+            $jvm = Get-Process -Name java -ErrorAction SilentlyContinue
+            if ($jvm) { break }
+            if ($prozess.HasExited) {
+              Write-Host "start.bat endete vorzeitig mit $($prozess.ExitCode)"
+              break
+            }
+          }
+
+          if (-not $jvm) {
+            Write-Host "--- release-start.log ---"
+            if (Test-Path $log) { Get-Content $log }
+            Write-Host "--- release-start.log.err ---"
+            if (Test-Path "$log.err") { Get-Content "$log.err" }
+            throw "keine JVM gestartet - ohne System-Java laeuft die App nicht"
+          }
+
+          # Der Nachweis, dass es wirklich die mitgelieferte JVM ist: der
+          # Prozesspfad muss im jre-Ordner des Release-Verzeichnisses liegen.
+          $pfade = $jvm | ForEach-Object { $_.Path }
+          $pfade | ForEach-Object { Write-Host "  JVM: $_" }
+          $fremd = $pfade | Where-Object { $_ -notlike "$ziel\jre\*" }
+          if ($fremd) { throw "die JVM kam nicht aus dem Release: $fremd" }
+          Write-Host "Beendet. Die App startet aus dem Release-Aufbau heraus ohne System-Java."
+
+          $jvm | Stop-Process -Force
+          if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
+
   startbat:
     name: start.bat auf windows-latest
     runs-on: windows-latest

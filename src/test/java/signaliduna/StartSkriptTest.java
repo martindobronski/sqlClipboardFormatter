@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -244,6 +245,185 @@ class StartSkriptTest {
      * start.sh zu sagen. Ein Eintrag im PATH hilft nicht, weil System32 Vorrang
      * hat. Deshalb wird der absolute Pfad gesucht.
      */
+    @Test
+    @DisplayName("eine mitgelieferte Laufzeit in jre/ gewinnt gegen System-Java")
+    void jre_hat_vorrang() throws Exception {
+        // Das ist kein Textvergleich, sondern ein echter Lauf: in jre/ liegt
+        // ein Skript, das das Java weiterreicht, mit dem die Tests gerade laufen.
+        // Erwartet wird, dass start.sh dieses zuerst nimmt und das als Quelle
+        // nennt. Ohne die Ausgabe im Pruefmodus waere nicht sichtbar, welches
+        // Java benutzt wurde.
+        legeJreAn(true);
+        try {
+            Ergebnis ergebnis = fuehreAus(List.of());
+            assertEquals(0, ergebnis.exitcode, () -> "Abbruch: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("(mitgeliefert)"),
+                    () -> "jre/ wurde nicht bevorzugt: " + ergebnis.output);
+        } finally {
+            entferneJre();
+        }
+    }
+
+    @Test
+    @DisplayName("eine kaputte Laufzeit in jre/ wird uebersprungen, nicht beachtet")
+    void kaputte_jre_wird_uebersprungen() throws Exception {
+        // Der haeufigste Fall: ein halb entpackter Download. Die Datei da ist,
+        // laeuft aber nicht. Das Skript darf daran nicht scheitern, es muss auf
+        // JAVA_HOME zurueckfallen - sonst faellt der Start genau dann aus, wenn
+        // ein zweites Java installiert ist und es gar nicht gebraucht wird.
+        legeJreAn(false);
+        try {
+            Ergebnis ergebnis = fuehreAus(List.of());
+            assertEquals(0, ergebnis.exitcode, () -> "Abbruch: " + ergebnis.output);
+            assertFalse(ergebnis.output.contains("(mitgeliefert)"),
+                    () -> "eine tote jre/ wurde als benutzt gemeldet: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("Java    :"),
+                    () -> "es wurde gar kein Java gefunden: " + ergebnis.output);
+        } finally {
+            entferneJre();
+        }
+    }
+
+    @Test
+    @DisplayName("start.bat zitiert den Pfad der mitgelieferten Laufzeit")
+    void startbat_quotet_den_jre_pfad() throws Exception {
+        // Derselbe Fehler wie bei Maven: "C:\Program Files\..." bricht an
+        // Leerzeichen auseinander, sobald der Pfad unquotiert in den Aufruf
+        // wandert. Static, weil sich das auf einem Mac nicht ausfuehren laesst.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        boolean gefunden = false;
+        for (String zeile : zeilen) {
+            if (zeile.contains("jre") && zeile.contains("java.exe") && !zeile.strip().startsWith("rem")) {
+                assertTrue(zeile.contains("\"%~dp0jre\\bin\\java.exe\""),
+                        () -> "jre-Pfad nicht gequotet: " + zeile.strip());
+                gefunden = true;
+            }
+        }
+        assertTrue(gefunden, "start.bat sucht die mitgelieferte Laufzeit nicht");
+    }
+
+    @Test
+    @DisplayName("jre/ ist von der Versionsverwaltung ausgenommen")
+    void jre_ist_nicht_versioniert() throws Exception {
+        // Rund 90 MB Binaerdateien, je nach Plattform verschieden. Sie duerfen
+        // nicht in die Historie: jeder Clone muesste sie sonst mitziehen, fuer
+        // immer, auf jeder Plattform.
+        String gitignore = Files.readString(new File(".gitignore").toPath(), StandardCharsets.UTF_8);
+        assertTrue(gitignore.lines().anyMatch(z -> z.strip().equals("jre/")),
+                "jre/ steht nicht in der .gitignore");
+    }
+
+    @Test
+    @DisplayName("start.bat lehnt nicht nach /dev/null um")
+    void startbat_kein_dev_null() throws Exception {
+        // ">/dev/null" ist die Umleitung aus der Unix-Welt. In cmd.exe legt sie
+        // eine Datei an und verweigert bei fehlendem Verzeichnis den Dienst -
+        // die ganze Zeile wird dann nicht ausgefuehrt, und der Zweig, in dem
+        // sie steht, prueft nie etwas. Der Fehler ist nur sichtbar, wenn man
+        // gerade kein JAVA_HOME gesetzt hat, deshalb ist er lange unentdeckt
+        // geblieben: die Windows-CI setzt immer ein JAVA_HOME.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        for (String zeile : zeilen) {
+            if (zeile.strip().startsWith("rem")) {
+                continue;
+            }
+            assertFalse(zeile.contains("/dev/null"),
+                    () -> "Unix-Umleitung in einer ausgefuehrten Zeile: " + zeile.strip());
+        }
+    }
+
+    @Test
+    @DisplayName("start.sh findet das Jar auch ohne pom.xml, wie im Release-ZIP")
+    void startsh_kommt_ohne_pom_xml_klar() throws Exception {
+        // Das Release-ZIP enthaelt kein pom.xml und kein src/ - nur start.sh,
+        // jre/ und target/*.jar. Beide Skripte haben ihren Jar-Namen bisher
+        // zwingend aus der pom.xml gelesen und dort abgebrochen. Genau daran
+        // waere jedes entpackte Release unstartbar gewesen. Der Test baut das
+        // Verzeichnis nach und fuehrt es wirklich aus.
+        Path zip = Files.createTempDirectory("release-ohne-pom");
+        try {
+            Files.copy(Path.of("start.sh"), zip.resolve("start.sh"));
+            Files.createDirectories(zip.resolve("target"));
+            Path jar = zip.resolve("target/SqlClipboardFormatter-9.9.9-probe.jar");
+            Files.writeString(jar, "Platzhalter, es zaehlt nur der Name\n", StandardCharsets.UTF_8);
+
+            // start.sh braucht Maven und pom.xml nicht, um den Namen zu
+            // finden - der Pruefmodus bricht vorher ab, falls doch.
+            Process lauf = new ProcessBuilder(bash(), "-c",
+                    "cd '" + zip + "' && ./start.sh -Pruefen")
+                    .redirectErrorStream(true).start();
+            String ausgabe = new String(lauf.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertEquals(0, lauf.waitFor(), () -> "Abbruch im Release-Verzeichnis: " + ausgabe);
+            assertTrue(ausgabe.contains("target/SqlClipboardFormatter-9.9.9-probe.jar"),
+                    () -> "das Jar wurde ohne pom.xml nicht gefunden: " + ausgabe);
+        } finally {
+            try (var dateien = Files.walk(zip)) {
+                dateien.sorted(java.util.Comparator.reverseOrder()).forEach(d -> {
+                    try {
+                        Files.deleteIfExists(d);
+                    } catch (Exception ignoriert) {
+                    }
+                });
+            }
+        }
+    }
+
+    /**
+     * Legt {@code jre/bin/java} im Projektverzeichnis an.
+     *
+     * @param brauchbar wenn true ein Skript, das das laufende Java weiterreicht,
+     *                  wenn false eine leere, nicht ausfuehrbare Datei
+     */
+    private void legeJreAn(boolean brauchbar) throws Exception {
+        File bin = new File("jre/bin");
+        assertTrue(bin.mkdirs() || bin.isDirectory(), "jre/bin liess sich nicht anlegen");
+        File java = new File(bin, "java");
+        if (brauchbar) {
+            // Ein Skript statt eines Verweises: unter Windows erlaubt das Anlegen
+            // eines Symbols einen, einem Verweis nicht ohne Developer-Modus.
+            String echtesJava = System.getProperty("java.home") + File.separator + "bin"
+                    + File.separator + "java";
+            Files.writeString(java.toPath(),
+                    "#!/bin/sh\nexec \"" + echtesJava + "\" \"$@\"\n", StandardCharsets.UTF_8);
+        } else {
+            Files.writeString(java.toPath(), "kein Java\n", StandardCharsets.UTF_8);
+        }
+        assertTrue(java.setExecutable(brauchbar), "Ausfuehrbarkeit liess sich nicht setzen");
+    }
+
+    /**raeumt {@code jre/} wieder weg, damit ein Fehlschlag nichts zuruecklaesst.*/
+    private void entferneJre() {
+        File jre = new File("jre");
+        File[] inhalt = jre.listFiles();
+        if (inhalt != null) {
+            for (File datei : inhalt) {
+                if (datei.isDirectory()) {
+                    entferneOrdner(datei);
+                } else {
+                    datei.delete();
+                }
+            }
+        }
+        jre.delete();
+    }
+
+    private void entferneOrdner(File ordner) {
+        File[] inhalt = ordner.listFiles();
+        if (inhalt != null) {
+            for (File datei : inhalt) {
+                if (datei.isDirectory()) {
+                    entferneOrdner(datei);
+                } else {
+                    datei.delete();
+                }
+            }
+        }
+        ordner.delete();
+    }
+
     private static String bash() {
         if (!System.getProperty("os.name", "").toLowerCase().startsWith("win")) {
             return "bash";

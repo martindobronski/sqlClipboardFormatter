@@ -32,9 +32,32 @@ fehler() {
 # "head -1" ist die Projektversion: sie steht in Zeile 9, die Abhaengigkeiten
 # kommen danach. Eine Abhaengigkeit, die sich vor dem Projekt aendert, wuerde
 # das brechen - dann greift aber der Leer-Test unten und meldet es.
-VERSION=$(sed -n 's|.*<version>\([^<]*\)</version>.*|\1|p' pom.xml | head -1)
-[ -n "$VERSION" ] || fehler "Version in der pom.xml nicht gefunden."
-JAR="target/SqlClipboardFormatter-$VERSION.jar"
+  # Im Repository steht der Name im pom.xml. Im Release-ZIP gibt es keine
+  # pom.xml - dort benennt das Jar selbst die Version. Ohne diesen zweiten
+  # Weg waere das Starten eines entpackten ZIPs unmoeglich, ohne genau die
+  # Datei mitzuschleppen, die ein Endnutzer nicht braucht.
+  # Das "|| true" ist noetig, nicht kosmetisch: ohne pom.xml liefert sed
+  # Fehler 2, unter "set -o pipefail" gilt damit die ganze Pipe als
+  # fehlgeschlagen, und "set -e" beendet das Skript an dieser Zeile - noch
+  # bevor es etwas ausgeben kann. Genau das tat der erste Versuch, und ohne
+  # Ausgabe sieht ein Absturz wie ein Skriptfehler aus.
+  VERSION=$(sed -n 's|.*<version>\([^<]*\)</version>.*|\1|p' pom.xml 2>/dev/null | head -1 || true)
+  JAR=""
+  if [ -n "$VERSION" ] && [ -f "target/SqlClipboardFormatter-$VERSION.jar" ]; then
+      JAR="target/SqlClipboardFormatter-$VERSION.jar"
+  else
+      # Eine unpassende Musterdatei wird von der Pruefung oben verworfen, das
+      # Muster selbst ist nur ein unveraenderter Text und keine Datei.
+      for kandidat in target/SqlClipboardFormatter-*.jar; do
+          [ -f "$kandidat" ] || continue
+          JAR="$kandidat"
+      done
+  fi
+  # Kein Abbruch, wenn nichts gefunden wurde: "-Pruefen" soll genau diesen
+  # Zustand melden und nicht an ihm scheitern - waehrend "mvn verify" laeuft
+  # das Skript in den Tests, und da gibt es das fertige Jar noch gar nicht.
+  # Der Startpfad weiter unten faengt das sauber ab.
+  [ -n "$JAR" ] || JAR="target/SqlClipboardFormatter-$VERSION.jar"
 
 # Argumente: -Neu abfangen, der Rest geht an die JVM.
 #
@@ -67,15 +90,30 @@ set -- ${JVM_ARGUMENTE[@]+"${JVM_ARGUMENTE[@]}"}
 # Nicht "which java": das findet auch das macOS-Stub unter
 # /usr/bin/java, das nur "Java ist nicht installiert" ausgibt und mit
 # Fehler 1 endet. -version klappt die Candidate wirklich auf.
+# Reihenfolge: mitgelieferte Laufzeit, SQLFORMATTER_JAVA, JAVA_HOME, PATH.
+# Die mitgelieferte gewinnt, weil sie die einzige ist, von der wir wissen,
+# dass sie zum Jar passt. Jeder Zweig prueft mit -version - ein halb
+# entpackter Download darf den Start nicht verhindern, wenn es ein
+# zweites Java gibt.
 JAVA=""
-if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ] \
+QUELLE=""
+if [ -x "./jre/bin/java" ] && ./jre/bin/java -version >/dev/null 2>&1; then
+    JAVA="./jre/bin/java"
+    QUELLE="mitgeliefert"
+elif [ -n "${SQLFORMATTER_JAVA:-}" ] && [ -x "$SQLFORMATTER_JAVA" ] \
+        && "$SQLFORMATTER_JAVA" -version >/dev/null 2>&1; then
+    JAVA="$SQLFORMATTER_JAVA"
+    QUELLE="SQLFORMATTER_JAVA"
+elif [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ] \
         && "$JAVA_HOME/bin/java" -version >/dev/null 2>&1; then
     JAVA="$JAVA_HOME/bin/java"
+    QUELLE="JAVA_HOME"
 elif kandidat="$(command -v java 2>/dev/null)" && [ -n "$kandidat" ] \
         && "$kandidat" -version >/dev/null 2>&1; then
     # "command -v", nicht "[ -x java ]": das testet eine Datei namens "java"
     # im Arbeitsverzeichnis und findet die im PATH nie.
     JAVA="$kandidat"
+    QUELLE="PATH"
 elif [ -x /usr/libexec/java_home ]; then
     # macOS ohne JDK im PATH: java_home liefert das Basisverzeichnis, nicht
     # die Laufzeit - selbst starten waere falsch.
@@ -83,6 +121,7 @@ elif [ -x /usr/libexec/java_home ]; then
     if [ -n "$basis" ] && [ -x "$basis/bin/java" ] \
             && "$basis/bin/java" -version >/dev/null 2>&1; then
         JAVA="$basis/bin/java"
+        QUELLE="java_home"
     fi
 fi
 [ -n "$JAVA" ] || fehler "kein Java gefunden. Java 17 oder neuer installieren."
@@ -104,7 +143,9 @@ fi
 # Skript auf bash 3.2 einmal laut mit "unbound variable" abbrechen lassen, und
 # das sieht man nur beim Ausfuehren, nicht beim Lesen.
 if [ "$PRUEFEN" = 1 ]; then
-    echo "Java    : $JAVA"
+    # Die Quelle mit anzeigen: "Java: /pfad/zum/java" allein laesst offen,
+    # ob das nun das mitgelieferte ist oder ein irgendwo installiertes.
+    echo "Java    : $JAVA  ($QUELLE)"
     echo "Maven   : ${MVN:-nicht gefunden}"
     # Pfad mit ausgeben: dann sieht man beim Pruefen sofort, ob die Version
     # aus der pom.xml wirklich die ist, die gebaut wurde.
