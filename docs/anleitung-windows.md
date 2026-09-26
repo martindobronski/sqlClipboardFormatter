@@ -314,12 +314,36 @@ Danach PowerShell neu öffnen. Der Pfad muss auf den Ordner zeigen, in dem
 
 ### „mvn" wird nicht gefunden, obwohl Maven installiert ist
 
-Legt Sie Maven am besten in einen Ordner **ohne Leerzeichen**, zum Beispiel
-`C:\tools\maven`, und tragen Sie ihn in den Suchpfad ein. Grund: Der Pfad zu
-Maven wird im Skript unquotiert an das Kommando gereicht, und ein Pfad wie
-`C:\Program Files\apache-maven-3.9.9\bin\mvn.cmd` bricht dabei auseinander.
-Über den Suchpfad gefunden lautet der Eintrag schlicht `mvn` — damit ist das
-Problem nicht vorhanden.
+Das Skript sucht in dieser Reihenfolge: im Projekt mitgelieferter Wrapper,
+dann `mvn` im Suchpfad, dann `%MAVEN_HOME%\bin\mvn.cmd`. Es sagt Ihnen im
+Prüfmodus, was davon gefunden wurde:
+
+```bat
+.\start.bat -Pruefen
+```
+
+Steht dort `Maven   : nicht gefunden`, ist keiner der drei Wege sichtbar.
+Prüfen Sie in dieser Reihenfolge:
+
+1. Ist `mvn.cmd` im Suchpfad? In einer neuen PowerShell:
+   ```powershell
+   where.exe mvn
+   ```
+   Findet der Befehl nichts, hilft nur der nächste Punkt.
+2. Ist `MAVEN_HOME` gesetzt und zeigt auf den Ordner **mit** `bin` darin?
+   ```powershell
+   $env:MAVEN_HOME
+   ```
+   Bei einem leeren Ergebnis hilft nur Punkt 3.
+3. Tragen Sie Maven im Suchpfad ein, oder setzen Sie `MAVEN_HOME`:
+   ```powershell
+   [Environment]::SetEnvironmentVariable("MAVEN_HOME", "C:\tools\apache-maven-3.9.9", "User")
+   ```
+
+Danach PowerShell neu öffnen — die Umgebung wird erst beim Start gelesen.
+
+> Ein Maven-Pfad mit Leerzeichen im Namen, wie `C:\Program Files\...`,
+> funktioniert inzwischen. Das war früher ein Fehler und ist behoben.
 
 ### Beim Schließen des schwarzen Fensters: „Terminate batch job (Y/N)?"
 

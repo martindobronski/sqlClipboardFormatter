@@ -136,6 +136,50 @@ class StartSkriptTest {
         }
     }
 
+    @Test
+    @DisplayName("start.bat ruft Maven quotet auf, damit Leerzeichen im Pfad nicht brechen")
+    void startBat_ruft_maven_quotet() throws Exception {
+        // Maven liegt haeufig unter "C:\Program Files\...". Unquotet bricht
+        // der Pfad dort auseinander und der Build scheitert ohne klare Meldung.
+        // Der Aufruf muss also call "%MVN%" sein, nicht %MVN%.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        boolean aufgerufen = false;
+        for (String zeile : zeilen) {
+            String text = zeile.strip();
+            if (text.isEmpty() || text.toLowerCase().startsWith("rem")) {
+                continue;
+            }
+            if (text.contains("%MVN%") && !text.contains("if ")) {
+                // Jede Verwendung ausserhalb einer Bedingung ist ein Aufruf.
+                assertTrue(text.startsWith("call \"%MVN%\""),
+                        () -> "Maven-Aufruf muss call \"%MVN%\" sein, ist aber: " + text);
+                aufgerufen = true;
+            }
+            // "call" darf nicht im Pfad selbst stecken: quotet waere
+            // "%MVN%" dann ein Programm namens "call mvnw.cmd".
+            assertFalse(text.contains("set \"MVN=call"),
+                    () -> "MVN enthaelt ein call und ist damit nicht quotbar: " + text);
+        }
+        assertTrue(aufgerufen, "kein Maven-Aufruf im Skript gefunden");
+    }
+
+    @Test
+    @DisplayName("start.bat prueft MAVEN_HOME nur, wenn es gesetzt ist")
+    void startBat_prueft_maven_home_nur_wenn_gesetzt() throws Exception {
+        // Ohne "if defined" expandiert "%MAVEN_HOME%\bin\mvn.cmd" zu
+        // "\bin\mvn.cmd" und der Test trifft die Datei im Wurzelverzeichnis
+        // des Laufwerks. Ein solcher Treffer haette nichts mit Maven zu tun.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        for (String zeile : zeilen) {
+            if (zeile.contains("MAVEN_HOME") && !zeile.strip().startsWith("rem")) {
+                assertTrue(zeile.contains("if defined MAVEN_HOME"),
+                        () -> "MAVEN_HOME wird ohne Abfrage expandiert: " + zeile.strip());
+            }
+        }
+    }
+
     private String versionAusPom() throws Exception {
         String pom = Files.readString(new File("pom.xml").toPath(), StandardCharsets.UTF_8);
         java.util.regex.Matcher treffer =

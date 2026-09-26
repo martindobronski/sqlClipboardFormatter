@@ -82,9 +82,16 @@ rem --- Maven suchen ---------------------------------------------------------
 rem Der Wrapper des Projekts hat Vorrang: er bringt die passende
 rem Maven-Version selbst mit, eine globale Installation koennte zu alt sein.
 set "MVN="
-if exist "mvnw.cmd" set "MVN=call mvnw.cmd"
+rem In MVN steht nur der Programmpfad, niemals ein "call" davor. Sonst
+rem laesst sich der Pfad nicht quoten: "%MVN%" waere dann ein Programm
+rem namens "call mvnw.cmd". Das call steht deshalb an der Aufrufstelle.
+if exist "mvnw.cmd" set "MVN=mvnw.cmd"
 if not defined MVN for /f "delims=" %%m in ('where mvn 2^>nul') do if not defined MVN set "MVN=%%m"
-if not defined MVN if exist "%MAVEN_HOME%\bin\mvn.cmd" set "MVN=%MAVEN_HOME%\bin\mvn.cmd"
+rem Das "if defined MAVEN_HOME" davor ist noetig: ohne die Abfrage
+rem expandiert der Pfad zu "\bin\mvn.cmd", und der Test trifft die Datei
+rem im Wurzelverzeichnis des Laufwerks - ein Treffer, der nichts mit
+rem Maven zu tun hat.
+if not defined MVN if defined MAVEN_HOME if exist "%MAVEN_HOME%\bin\mvn.cmd" set "MVN=%MAVEN_HOME%\bin\mvn.cmd"
 
 rem --- Muss gebaut werden? -------------------------------------------------
 set "PRUEFUNG=$m=[datetime]'1601-01-01'; foreach ($i in (Get-ChildItem -Recurse -File -Path src,pom.xml)) { if ($i.LastWriteTime -gt $m) { $m=$i.LastWriteTime } }; if ((Get-Item '%JAR%').LastWriteTime -lt $m) { 'BAUEN' } else { 'OK' }"
@@ -119,7 +126,11 @@ if not defined MVN (
     exit /b 1
 )
 echo Bauen ...
-%MVN% -q -DskipTests package
+rem call, weil eine .bat ohne call die Kontrolle nicht zurueckgibt. Bei einer
+rem .exe wie mvn ist call harmlos, deshalb steht es hier statt in MVN. Die
+rem Anfuehrungszeichen sind noetig: Maven liegt haeufig unter
+rem "C:\Program Files\...", und unquotet bricht der Pfad an Leerzeichen auseinander.
+call "%MVN%" -q -DskipTests package
 if errorlevel 1 (
     echo Fehler: der Build ist fehlgeschlagen. 1>&2
     exit /b 1
