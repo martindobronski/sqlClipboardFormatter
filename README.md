@@ -253,12 +253,50 @@ prüfen lässt, ohne ein Fenster zu öffnen:
 
 ```bat
 > start.bat -Pruefen
-Java    : C:\Program Files\Java\jdk-17\bin\java.exe
+Java    : C:\...\jre\bin\java.exe  (mitgeliefert)
 Maven   : mvn
 Jar     : target\SqlClipboardFormatter-0.2.jar - vorhanden
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
+
+Der Klammerzusatz nennt, **woher** das Java stammt. `Java : C:\...\java.exe` allein
+lässt offen, ob das nun das mitgelieferte ist oder ein irgendwo installiertes — und
+das ist genau die Frage, die man stellt, wenn etwas nicht startet.
+
+### Die mitgelieferte Laufzeit
+
+Liegt im selben Ordner ein `jre/`, nimmt `start.bat` dessen Java. Es muss weder Java
+noch Maven installiert sein:
+
+```
+sqlClipboardFormatter-0.2-windows-x64/
+  start.bat
+  jre/bin/java.exe          ← wird zuerst genommen
+  target/SqlClipboardFormatter-0.2.jar
+  README.md
+  docs/anleitung-windows.md
+```
+
+Die Reihenfolge der Suche ist: `jre/`, dann die Variable `SQLFORMATTER_JAVA`, dann
+`JAVA_HOME`, dann der `PATH`. Jeder Zweig prüft sein Java mit `java -version` — ein
+halb entpackter Download darf den Start nicht verhindern, obwohl ein zweites Java
+installiert ist. Die mitgelieferte Laufzeit gewinnt, weil sie die einzige ist, von der
+wir wissen, dass sie zum Jar passt.
+
+Wer die 56 MB nicht mitnehmen will, lässt den Ordner `jre/` weg und installiert Java
+selbst; `start.bat` nimmt dann `JAVA_HOME` oder den `PATH`.
+
+Zum Erzwingen einer bestimmten Laufzeit, etwa eines JDKs, das auf keinem Fall benutzt
+werden soll:
+
+```bat
+set SQLFORMATTER_JAVA=C:\Java\jdk-17\bin\java.exe
+start.bat
+```
+
+Der Ordner `jre/` ist in `.gitignore` ausgenommen: rund 90 MB Binärdateien, je nach
+Plattform verschieden, gehören nicht in die Historie, sondern in das Release-Asset.
 
 Beide Skripte verstehen dieselben Schalter — das ist auch getestet, weil die
 Gefahr sonst asymmetrisch bleibt: `-Pruefen` landet sonst bei Java und antwortet
@@ -269,7 +307,9 @@ keiner ist.
 
 - **Der Jar-Name wird aus der `pom.xml` gelesen**, nicht fest eingetragen. Nach
   einem Versionswechsel zeigen beide Skripte sonst ins Leere, und zwar erst dann,
-  wenn schon alles andere läuft.
+  wenn schon alles andere läuft. Fehlt die `pom.xml` — wie im Release-ZIP —, übernimmt
+  der Name des mitgelieferten Jars; ein Release lässt sich also auch aus einem Ordner
+  starten, der keine Build-Dateien enthält.
 - **Unter Windows hat `start.bat` CRLF-Zeilenenden** und ASCII-Inhalt. Das ist
   über `.gitattributes` sichergestellt: im Repository liegt die Datei mit LF, im
   ausgecheckten Arbeitsverzeichnis immer mit CRLF.
@@ -323,7 +363,7 @@ src/main/java/signaliduna/
   SqlTextSpans.java                 Zerlegt Text in Literale, Bezeichner, Kommentare
 src/main/resources/
   version.properties                Erzeugt aus der pom.xml
-src/test/java/signaliduna/          193 Tests
+src/test/java/signaliduna/          201 Tests
 ```
 
 Die Trennung ist Absicht: `SqlPrettyFormatter`, `SqlFormatService`,
@@ -347,7 +387,7 @@ daraus ab:
 
 | Wer                      | Woher                                                                                                 |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `start.sh`, `start.bat`  | lesen die erste `<version>`-Zeile aus der pom.xml für den Jar-Namen                                   |
+| `start.sh`, `start.bat`  | lesen die erste `<version>`-Zeile aus der pom.xml für den Jar-Namen; ohne pom.xml aus dem Jar-Namen |
 | Versionszeile in der App | `version.properties`, von Maven aus der pom.xml erzeugt; im gepackten Jar zusätzlich aus dem Manifest |
 
 Anheben heißt deshalb nur eines:
@@ -386,7 +426,7 @@ mvn test                       # alle
 mvn test -Dtest=SqlPrettyFormatterTest   # eine Klasse
 ```
 
-**193 Tests**, verteilt auf:
+**201 Tests**, verteilt auf:
 
 | Klasse                   | Tests | Wofür                                                           |
 | ------------------------ | ----- | --------------------------------------------------------------- |
@@ -394,7 +434,7 @@ mvn test -Dtest=SqlPrettyFormatterTest   # eine Klasse
 | `SqlPrettyFormatterTest` | 47    | Formatierregeln, Operatorerhalt, Zeilenenden                    |
 | `SqlFormatServiceTest`   | 44    | Normalisierung, Literal- und Bezeichnerschutz                   |
 | `SqlDetectorTest`        | 33    | SQL-Erkennung, parametrisiert über Start- und Nicht-Startwörter |
-| `StartSkriptTest`        | 8     | Startskripte: Verhalten, Konventionen, Schalterparität          |
+| `StartSkriptTest`        | 16    | Startskripte: Verhalten, Konventionen, Schalterparität, Laufzeitwahl |
 | `ClipboardServiceTest`   | 3     | Zwischenablage lesen und schreiben                              |
 
 Zum Nachzählen, weil die Zahl sonst leicht danebenliegt: `mvn test` meldet für
@@ -402,10 +442,10 @@ Zum Nachzählen, weil die Zahl sonst leicht danebenliegt: `mvn test` meldet für
 sondern eine Eigenheit von `@Nested` — die Zähler sitzen in den inneren Klassen.
 Wer nachzählen will, zählt die `<testcase>`-Elemente in
 `target/surefire-reports/TEST-*.xml` oder liest die Summe aus der
-Maven-Ausgabe (193).
+Maven-Ausgabe (201).
 
 `StartSkriptTest` führt `start.sh` wirklich aus — deshalb findet man dort Regressionen,
-die man beim Lesen übersieht. Zwei Beispiele aus der Praxis:
+die man beim Lesen übersieht. Fünf Beispiele aus der Praxis:
 
 - **Leeres Array unter `set -u`.** Auf bash 3.2, wie macOS es ausliefert, bricht
   die Expansion eines leeren Arrays ab. Startet man `start.sh` ohne Argumente, ist
@@ -414,6 +454,19 @@ die man beim Lesen übersieht. Zwei Beispiele aus der Praxis:
 - **Unescapetes `|` in `for /f`.** Innerhalb von `for /f` trennt ein Pipezeichen den
   Befehl; die Zeilenfortsetzung bricht ohne jede Meldung ab. Beide Startskripte
   sind auf genau das geprüft.
+- **`>/dev/null` in `start.bat`.** Das ist die Umleitung aus der Unix-Welt. `cmd.exe`
+  legt stattdessen eine Datei an und verweigert bei fehlendem Verzeichnis den Dienst —
+  die ganze Zeile wird nie ausgeführt. Wer nur Java im `PATH` hatte, bekam so
+  „kein Java gefunden", obwohl Java installiert war. Der Fehler ist lange
+  unentdeckt geblieben, weil die Windows-CI immer ein `JAVA_HOME` setzt und der
+  betroffene Zweig dadurch nie lief.
+- **Jar-Name zwingend aus der `pom.xml`.** Beide Skripte brachen ohne sie ab, was
+  jedes Release unstartbar gemacht hätte. Der Test baut die Verzeichnisstruktur des
+  Release-ZIPs nach und führt sie aus.
+- **`set -e` mit `pipefail` an der Versionszeile.** Fehlt die `pom.xml`, liefert `sed`
+  Fehler 2, die Pipe gilt damit als fehlgeschlagen, und `set -e` beendet das Skript —
+  ohne jede Ausgabe. Ein Absturz ohne Ausgabe sieht wie ein Skriptfehler aus statt
+  wie ein falscher Pfad.
 
 ---
 
@@ -421,11 +474,14 @@ die man beim Lesen übersieht. Zwei Beispiele aus der Praxis:
 
 Ehrlich benannt, was nicht abgesichert ist:
 
-- **`start.bat` ist nie auf Windows ausgeführt worden.** Geprüft wurde statisch:
-  ASCII, CRLF, erreichbare Sprungziele, keine unescapeten Pipezeichen in `for /f`.
-  Getestet auf macOS, wo kein `cmd.exe` zur Verfügung steht. Der erste Aufruf auf
-  einem Windows-Rechner sollte deshalb `start.bat -Pruefen` sein — bzw. ein
-  `start.bat -Neu`, falls doch gebaut werden soll.
+- **`start.bat` läuft auf Windows, und das ist geprüft.** Ein Workflow führt es auf
+  `windows-latest` aus: vollständige Testsuite, `start.bat -Pruefen` und ein echter
+  Start, danach wird gefragt, ob eine JVM läuft. Ein zweiter Job baut genau die
+  Verzeichnisstruktur des Release-ZIPs nach — `start.bat`, `jre/`, das fertige Jar,
+  ohne `pom.xml`, ohne `src/`, ohne Maven —, blendet danach `JAVA_HOME` und den
+  `PATH` aus und verlangt, dass die gestartete JVM unterhalb von `jre/` läuft. Das ist
+  der Nachweis, dass die App ohne System-Java startet, nicht nur die Anweisung, dass
+  sie das könnte. Die Fehler, die dabei auffielen, sind in eigenen Tests festgehalten.
 - **Ein gemeldeter Fehler mit verschwindenden `*` ist ungeklärt.** 47 Eingaben über
   alle sechs Dialekte sowie der Normalisierungs-Fallback ließen die Anzahl der
   Sternchen unverändert, ein Test über die laufende Anwendung ebenfalls. Die

@@ -5,7 +5,16 @@ Mac benutzen wollen. Sie setzt keine Programmierkenntnisse voraus — nur ein
 Terminal, in das Sie einen Befehl eintippen können.
 
 > **Sie suchen die Anleitung für Windows?** Dann nehmen Sie
-> [anleitung-windows.md](anleitung-windows.md).
+> [anleitung-windows.md](anleitung-windows.md). Dort gibt es ein fertiges ZIP,
+> in dem die Java-Laufzeit bereits enthalten ist — auf dem Mac ist Java
+> Voraussetzung, weil es dafür kein ZIP gibt.
+
+> ### Falls bei Ihnen eine mitgelieferte Laufzeit liegt
+>
+> `start.sh` nimmt, falls vorhanden, ein Java aus einem Ordner `jre/` neben
+> dem Skript — auf dem Mac liegt normalerweise keiner, dann greift Ihr
+> installiertes Java. `start.sh -Pruefen` sagt Ihnen in jedem Fall, welches
+> Java verwendet wird und woher es stammt. Näheres dazu steht im README.
 
 ---
 

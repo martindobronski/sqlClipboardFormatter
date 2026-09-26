@@ -7,14 +7,22 @@ Windows-Rechner benutzen wollen. Sie setzt keine Programmierkenntnisse voraus.
 > [anleitung-macos.md](anleitung-macos.md).
 
 > ### Stand der Prüfung
-> 
-> Diese Anleitung ist vollständig aus dem Skript `start.bat` herausgeschrieben
-> und an jeder Stelle mit dem Quelltext abgeglichen. Auf einem echten Windows-
-> Rechner ist es jedoch **noch nicht durchlaufen** — unter macOS lässt sich kein
-> `cmd.exe` ausführen. Die Schritte in Abschnitt 3 und 4 sind deshalb als
-> Anleitung formuliert, nicht als bestätigte Erprobung. Wenn etwas abweicht,
-> beginnen Sie mit Abschnitt 8; dort steht, wie Sie den Fehlertext zu Gesicht
-> bekommen. Der erste sinnvolle Test ist immer `start.bat -Pruefen`.
+>
+> Diese Anleitung ist aus dem Skript `start.bat` herausgeschrieben und an jeder
+> Stelle mit dem Quelltext abgeglichen. Sie ist außerdem **auf einem echten
+> Windows-Rechner durchlaufen**: Ein automatischer Lauf auf `windows-latest`
+> führt die vollständige Testsuite aus, ruft `start.bat -Pruefen` auf und startet
+> das Programm wirklich — danach wird gefragt, ob eine JVM läuft. Ein zweiter
+> Lauf baut genau die Verzeichnisstruktur auf, die Sie nach dem Entpacken des
+> ZIPs vorfinden, blendet anschließend `JAVA_HOME` und den Suchpfad aus und
+> verlangt, dass die gestartete JVM aus dem mitgelieferten Ordner `jre/` kommt.
+>
+> Das ist der Grund, warum Sie für den ersten Start weder Java noch Maven
+> brauchen: Es ist nicht behauptet, sondern auf einem Rechner ohne Java
+> nachgewiesen worden. Wenn bei Ihnen etwas abweicht, beginnen Sie mit
+> Abschnitt 8; dort steht, wie Sie den Fehlertext zu Gesicht bekommen. Der
+> erste sinnvolle Test ist immer `start.bat -Pruefen`.
+
 
 ---
 
@@ -49,20 +57,89 @@ Datenbankprogramm und keine Internetverbindung**.
 
 ## 2. Was Sie brauchen
 
-|                        |                                                                                              |
-| ---------------------- | -------------------------------------------------------------------------------------------- |
-| **Java 17 oder neuer** | zwingend — das Programm ist in Java geschrieben                                              |
-| **Maven**              | nur nötig, wenn Sie das Programm **selbst übersetzen** wollen; zum Benutzen nicht nötig      |
-| **PowerShell**         | ist seit Windows 8 dabei und wird für die Prüfungen benutzt — müssen Sie nichts installieren |
+Für den normalen Fall — Sie wollen das Programm benutzen — **brauchen Sie nichts
+außer Windows.** Kein Java, kein Maven, keine Installation.
 
-Maven können Sie sich sparen: Ist das Programm einmal übersetzt, startet es
-auch ohne Maven. Auf einem Mac ist genau das nachgewiesen worden; im
-Windows-Skript ist derselbe Ablauf hinterlegt.
+| Weg                                | Java | Maven | Internet beim Start |
+| ---------------------------------- | ---- | ----- | ------------------ |
+| **ZIP entpacken** (Abschnitt 3)    | —    | —     | nein               |
+| Aus dem Quelltext (Abschnitt 4)    | 17+  | ja    | nein               |
+
+Im ZIP liegt eine vollständige Java-Laufzeit bereits bei. Sie ist rund 90 MB
+groß, davon etwa 56 MB die Laufzeit selbst; dafür startet das Programm auf
+einem Rechner, auf dem noch nie Java war.
+
+Wollen Sie die 56 MB nicht mitnehmen, lassen Sie den Ordner `jre/` nach dem
+Entpacken einfach löschen und installieren Java selbst — dann nimmt `start.bat`
+automatisch Ihr Java. Beides gleichzeitig ist unnötig; der Ordner `jre/` hat
+Vorrang.
 
 Auf einem Windows-Rechner mit ARM-Prozessor brauchen Sie die ARM-Version von
-Java, nicht die für Intel.
+Java, nicht die für Intel. Ein ZIP gibt es derzeit nur für x64.
 
-## 3. Schritt 1: Java prüfen
+## 3. Der einfache Weg: ZIP entpacken und starten
+
+1. Das ZIP herunterladen und in einen Ordner entpacken, in dem das Programm
+   liegen darf. Der Benutzerordner ist ein guter Ort; wichtig ist, dass Sie
+   später **nicht** nur die einzelne `start.bat` herauskopieren.
+2. Doppelklick auf `start.bat`.
+
+Danach öffnet sich das Programm. Es läuft aus einem schwarzen Fenster, das
+danach im Hintergrund bleibt — Sie schließen es nicht, solange Sie das Programm
+benutzen. Das ist kein Fehler, sondern das Anzeigefenster der Laufzeit.
+
+Sollte etwas nicht stimmen, prüfen Sie zuerst in einem PowerShell-Fenster im
+selben Ordner:
+
+```powershell
+start.bat -Pruefen
+```
+
+Bei einem frisch entpackten ZIP sieht das so aus:
+
+```
+Java    : C:\...\jre\bin\java.exe  (mitgeliefert)
+Maven   : nicht gefunden
+Jar     : target\SqlClipboardFormatter-0.2.jar - vorhanden
+Bauen   : falls Quellen neuer
+Argumente: 0 an die JVM
+```
+
+Der Klammerzusatz sagt Ihnen, **woher** das Java stammt. Bei
+`(mitgeliefert)` läuft alles auf der Laufzeit aus dem ZIP, und Sie können sich
+sicher sein, dass keine zweite Java-Installation auf Ihrem Rechner stört.
+Steht dort `(JAVA_HOME)` oder `(PATH)`, wurde der Ordner `jre/` nicht gefunden
+und Ihr eigenes Java genommen — was auch in Ordnung ist, sofern es Java 17
+oder neuer ist.
+
+`Maven   : nicht gefunden` ist beim entpackten ZIP **richtig** und kein Fehler:
+Maven wird nur gebraucht, um das Programm aus dem Quelltext zu übersetzen.
+
+### Ein bestimmtes Java erzwingen
+
+Falls auf Ihrem Rechner mehrere Java-Versionen liegen und Sie eine bestimmte
+verwenden wollen, setzen Sie die Variable `SQLFORMATTER_JAVA` auf den Pfad zur
+`java.exe`. Sie hat Vorrang vor `jre/`, `JAVA_HOME` und dem Suchpfad — damit
+lässt sich ein unerwünschtes Java zuverlässig ausschließen:
+
+```powershell
+$env:SQLFORMATTER_JAVA = "C:\Program Files\Java\jdk-17\bin\java.exe"
+start.bat
+```
+
+Gilt nur für dieses Fenster. Für dauerhaft:
+
+```powershell
+[Environment]::SetEnvironmentVariable("SQLFORMATTER_JAVA", "C:\Program Files\Java\jdk-17\bin\java.exe", "User")
+```
+
+## 4. Der andere Weg: aus dem Quelltext übersetzen
+
+Dieser Weg ist nur nötig, wenn Sie das Programm selbst verändern wollen oder
+wenn Sie ohne den Download auskommen. Er braucht **Java 17 oder neuer** und
+**Maven**; beides können Sie vorher prüfen.
+
+### Schritt 1: Java prüfen
 
 Öffnen Sie PowerShell — etwa mit **Win** tippen, „PowerShell" eingeben,
 Enter — und prüfen Sie:
@@ -83,7 +160,7 @@ erkannt* oder *'java' is not recognized*, fehlt Java oder es ist zu alt.
 Installieren Sie es über [Azul Zulu](https://azul.com/downloads/)
 („JDK", Windows, x64 oder ARM64).
 
-## 4. Schritt 2: Das Programm holen und starten
+### Schritt 2: Das Programm holen
 
 Wechseln Sie in einen Ordner, in dem das Programm liegen darf. Eine
 PowerShell öffnet zum Beispiel in Ihrem Benutzerordner, was passt. Dann:
@@ -295,16 +372,17 @@ Skript ausgibt:
 | Meldung                                                                       | Ursache                                                                                                     |
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `Fehler: kein Java gefunden. Java 17 oder neuer installieren.`                | Java fehlt oder ist zu alt — Schritt 3                                                                      |
-| `Fehler: Version in der pom.xml nicht gefunden.`                              | `pom.xml` fehlt oder ist beschädigt — der Ordner ist unvollständig                                          |
-| `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Maven fehlt, obwohl noch nicht übersetzt wurde                                                              |
+| `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Maven fehlt, obwohl noch nicht übersetzt wurde — oder das Jar fehlt ganz, etwa weil Sie nur `start.bat` herauskopiert haben |
 | `Fehler: der Build ist fehlgeschlagen.`                                       | Beim Übersetzen ging etwas schief — die ausführliche Meldung steht darüber                                  |
 | `Fehler: "target\SqlClipboardFormatter-0.2.jar" fehlt trotz Bauvorgang.`      | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
 
 ### „Java wurde nicht gefunden", obwohl Java installiert ist
 
-Das Skript sucht zuerst in `JAVA_HOME` und dann im Suchpfad. Ist Java an einer
-anderen Stelle installiert, setzen Sie `JAVA_HOME` — oder nehmen Sie Java in den
-Suchpfad auf:
+Das Skript sucht der Reihe nach im Ordner `jre/`, in der Variable
+`SQLFORMATTER_JAVA`, in `JAVA_HOME` und zuletzt im Suchpfad. Steht in
+`start.bat -Pruefen` weder `(mitgeliefert)` noch `(JAVA_HOME)`, ist Ihr Java an
+einer Stelle installiert, die der Skript nicht kennt. Setzen Sie dann
+`JAVA_HOME` — oder nehmen Sie Java in den Suchpfad auf:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Program Files\Java\jdk-17", "User")
