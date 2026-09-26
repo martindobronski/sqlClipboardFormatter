@@ -19,6 +19,8 @@ import javax.swing.UIManager;
 
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.awt.Color;
 import java.awt.BorderLayout;
 import java.lang.reflect.Field;
@@ -34,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -550,6 +553,62 @@ class FormatterPanelTest {
     class Darstellung {
 
         @Test
+        @DisplayName("die Versionszeile nennt die Version und ihr Datum")
+        void versionszeile_nennt_version_und_datum() throws Exception {
+            JLabel versionLabel = field("versionLabel");
+            assertTrue(versionLabel.getText().matches("Version \\S+ vom \\d{2}\\.\\d{2}\\.\\d{4}"),
+                    "unerwartete Form: '" + versionLabel.getText() + "'");
+        }
+
+        @Test
+        @DisplayName("die Versionszeile zeigt genau die Version aus der pom.xml")
+        void versionszeile_zeigt_die_pom_version() throws Exception {
+            // Aus der pom.xml gelesen statt hier eingetragen: sonst prueft der
+            // Test eine Zahl, die beim naechsten Versionswechsel nur noch
+            // aussieht als waere sie richtig.
+            String erwartet = versionAusPom();
+            JLabel versionLabel = field("versionLabel");
+            assertTrue(versionLabel.getText().startsWith("Version " + erwartet + " vom "),
+                    "erwartet Version aus der pom.xml '" + erwartet
+                            + "', angezeigt: '" + versionLabel.getText() + "'");
+        }
+
+        private String versionAusPom() throws Exception {
+            String pom = java.nio.file.Files.readString(
+                    new File("pom.xml").toPath(), StandardCharsets.UTF_8);
+            java.util.regex.Matcher treffer =
+                    java.util.regex.Pattern.compile("<version>([^<]+)</version>").matcher(pom);
+            assertTrue(treffer.find(), "keine <version> in der pom.xml gefunden");
+            return treffer.group(1);
+        }
+
+        @Test
+        @DisplayName("die Versionszeile sitzt rechts unten")
+        void versionszeile_sitzt_rechts_unten() throws Exception {
+            JPanel infoLine = field("infoLine");
+            JPanel footer = field("footer");
+            JLabel versionLabel = field("versionLabel");
+            JLabel statusLabel = field("statusLabel");
+
+            // Nicht an Layout-Konstanten pruefen: die Panels nutzen
+            // new BorderLayout(0, 10), nicht BorderLayout.EAST. Gemessen wird
+            // die Lage im gerenderten Kasten.
+            panel.setSize(700, 520);
+            panel.doLayout();
+            footer.doLayout();
+            infoLine.doLayout();
+
+            assertSame(infoLine, versionLabel.getParent(), "die Version steht in der Fusszeile");
+            assertEquals(infoLine.getWidth(),
+                    versionLabel.getX() + versionLabel.getWidth(), 1,
+                    "die Version klebt am rechten Rand");
+            assertEquals(0, statusLabel.getX(), 1, "die Statusmeldung steht links");
+            assertEquals(footer.getHeight(),
+                    infoLine.getY() + infoLine.getHeight(), 1,
+                    "die Zeile ist der unterste Fusszeilenteil");
+        }
+
+        @Test
         void schriften_sind_logische_fonts() {
             // Vorher fest auf "Segoe UI"/"Consolas" - unter macOS/Linux kein Monospace.
             assertEquals(java.awt.Font.MONOSPACED, sqlArea.getFont().getFamily());
@@ -749,11 +808,15 @@ class FormatterPanelTest {
             faerbe("select a, b from t where c = 1 -- x");
             Timer highlightTimer = field("highlightTimer");
             Timer dialectTimer = field("dialectTimer");
-            // Nur den Entprell-Timer abklingen lassen: er wiederholt sich nicht.
-            // Der Dialekt-Timer wiederholt sich und laeuft daher dauerhaft.
-            for (int i = 0; i < 100 && highlightTimer.isRunning(); i++) {
-                Thread.sleep(20);
-            }
+            // Beide Timer anhalten, statt auf ihr Abklingen zu warten. Der
+            // Dialekt-Timer wiederholt sich alle 300 ms und kann den
+            // Entprell-Timer sonst genau dann neu starten, wenn asserted wird -
+            // der Test war dadurch sporadisch rot. Ohne laufende Timer kann
+            // ausser dem Einfaerben selbst niemand den Timer einplanen, und
+            // genau das ist die Zusage.
+            dialectTimer.stop();
+            highlightTimer.stop();
+            Thread.sleep(50);
 
             // setCharacterAttributes feuert technisch weiter Dokument-Events an
             // alle Listener - das laesst sich nicht unterdruecken und ist

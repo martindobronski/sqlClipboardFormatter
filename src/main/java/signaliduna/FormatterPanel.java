@@ -14,8 +14,17 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Window;
 import java.awt.datatransfer.ClipboardOwner;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -44,7 +53,15 @@ public final class FormatterPanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private static final String FALLBACK_VERSION = "0.1";
+    private static final String VERSION_DATATEI = "/version.properties";
+
+    /**
+     * Deutsches Datumsformat fuer die Versionszeile. Fest als Konstante,
+     * nicht ueber {@code Locale.getDefault()}: die Anzeige soll in jedem
+     * System gleich aussehen.
+     */
+    private static final DateTimeFormatter DATUM_FORMAT =
+            DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private static final int BUTTON_GAP = 8;
 
@@ -716,9 +733,69 @@ public final class FormatterPanel extends JPanel {
     }
 
     private static String version() {
-        Package pkg = FormatterPanel.class.getPackage();
-        String fromManifest = pkg == null ? null : pkg.getImplementationVersion();
-        return "Version " + (fromManifest != null ? fromManifest : FALLBACK_VERSION);
+        String datum = manifestEintrag("Implementation-Date");
+        if (datum == null) {
+            // Ohne gepacktes Jar (IDE, Tests) gibt es kein Build-Datum. Dann
+            // heute - ein leeres oder erfundenes Datum waere schlechter.
+            datum = LocalDate.now().format(DATUM_FORMAT);
+        }
+        return "Version " + nummer() + " vom " + datum;
+    }
+
+    /**
+     * Die Versionsnummer aus dem Manifest, sonst aus der Datei, die Maven aus
+     * der pom.xml erzeugt.
+     *
+     * <p>Frueher stand hier eine Konstante, die von Hand mit der pom.xml
+     * mitgepflegt werden musste - bei drei solcher Stellen pflegt man sie
+     * zuverlaessig nur zwei. Das Manifest gilt, sobald das Jar gepackt ist;
+     * die Datei deckt IDE und Tests ab, wo es kein Manifest gibt.
+     */
+    private static String nummer() {
+        String ausManifest = manifestEintrag("Implementation-Version");
+        if (ausManifest != null) {
+            return ausManifest;
+        }
+        try (InputStream in = FormatterPanel.class.getResourceAsStream(VERSION_DATATEI)) {
+            if (in != null) {
+                Properties eigenschaften = new Properties();
+                eigenschaften.load(in);
+                String wert = eigenschaften.getProperty("version");
+                if (wert != null && !wert.isBlank() && !wert.startsWith("${")) {
+                    return wert.trim();
+                }
+            }
+        } catch (IOException e) {
+            // Praktisch nicht erreichbar: gelesen wird eine Datei im eigenen
+            // Jar. Sollte es doch passieren, zeigt die Zeile "unbekannt" -
+            // das ist ehrlicher als eine leere Anzeige.
+        }
+        return "unbekannt";
+    }
+
+    /**
+     * Liest einen Haupt-Eintrag aus dem Manifest des Codes, nicht aus dem
+     * Classpath: {@code getResource("/META-INF/MANIFEST.MF")} liebe das
+     * Manifest der zuerst gefundenen Dependency und damit womoeglich deren
+     * Version.
+     *
+     * @return der Wert oder {@code null}, wenn es kein gepacktes Jar ist
+     */
+    private static String manifestEintrag(String schluessel) {
+        try {
+            URL quelle = FormatterPanel.class.getProtectionDomain().getCodeSource().getLocation();
+            if (!"file".equals(quelle.getProtocol())) {
+                return null;
+            }
+            // Aus einem Verzeichnis (target/classes) gibt es kein Jar, dann
+            // greift der Rueckfall.
+            try (JarFile jar = new JarFile(new File(quelle.toURI()))) {
+                Manifest manifest = jar.getManifest();
+                return manifest == null ? null : manifest.getMainAttributes().getValue(schluessel);
+            }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

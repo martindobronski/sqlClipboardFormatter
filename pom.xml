@@ -6,7 +6,7 @@
 
   <groupId>signaliduna</groupId>
   <artifactId>SqlClipboardFormatter</artifactId>
-  <version>0.1</version>
+  <version>0.2</version>
   <packaging>jar</packaging>
 
   <name>SQL Clipboard Formatter</name>
@@ -19,6 +19,10 @@
     <junit.version>5.10.2</junit.version>
     <sqlformatter.version>2.0.5</sqlformatter.version>
     <flatlaf.version>3.2.5</flatlaf.version>
+    <!-- Wird als Implementation-Date ins Manifest geschrieben und in der
+         Fusszeile angezeigt. Fest formatiert statt ueber die Systemzeit,
+         damit die Versionszeile in jedem System gleich aussieht. -->
+    <maven.build.timestamp.format>dd.MM.yyyy</maven.build.timestamp.format>
   </properties>
 
   <dependencies>
@@ -53,6 +57,17 @@
   </dependencies>
 
   <build>
+    <!-- Die Versionsnummer steht in pom.xml und nirgends sonst: start.sh und
+         start.bat lesen sie von hier, FormatterPanel aus der daraus erzeugten
+         version.properties. Fest eingetragen war sie an drei Stellen, und eine
+         davon ist bei jedem Versionswechsel stillschweigend falsch geworden. -->
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -93,6 +108,7 @@
                    statt auf den Fallback zurueckzufallen. -->
               <Implementation-Version>${project.version}</Implementation-Version>
               <Implementation-Title>${project.name}</Implementation-Title>
+              <Implementation-Date>${maven.build.timestamp}</Implementation-Date>
             </manifestEntries>
           </archive>
         </configuration>
@@ -119,6 +135,7 @@
                   <manifestEntries>
                     <Implementation-Version>${project.version}</Implementation-Version>
                     <Implementation-Title>${project.name}</Implementation-Title>
+                    <Implementation-Date>${maven.build.timestamp}</Implementation-Date>
                   </manifestEntries>
                 </transformer>
               </transformers>
