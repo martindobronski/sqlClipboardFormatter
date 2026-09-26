@@ -184,6 +184,11 @@ jobs:
           if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
           Write-Host "Nachweis erbracht: die App laeuft ohne System-Java."
 
+          # pwsh gibt den Exit-Code des letzten nativen Aufrufs als eigenen
+          # weiter. Der letzte ist "where java" aus diesem Schritt, und genau
+          # der soll scheitern. Jeder echte Fehler wird per throw abgefangen.
+          exit 0
+
       - name: ZIP packen
         shell: pwsh
         run: |

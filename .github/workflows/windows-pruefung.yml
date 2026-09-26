@@ -207,6 +207,13 @@ jobs:
           $jvm | Stop-Process -Force
           if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
 
+          # pwsh gibt den Exit-Code des letzten nativen Aufrufs als eigenen
+          # weiter. Der letzte ist "where java" aus dem Kopf dieses Schrittes,
+          # und genau das soll ja scheitern - der Schritt waere sonst nach
+          # einem vollen Erfolg rot. Jeder echte Fehler wird weiter oben per
+          # throw abgefangen; bis hierher ist also alles in Ordnung.
+          exit 0
+
   startbat:
     name: start.bat auf windows-latest
     runs-on: windows-latest
