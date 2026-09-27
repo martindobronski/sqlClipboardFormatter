@@ -356,7 +356,7 @@ jobs:
           if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
           Write-Host "Beendet. start.bat startet die App auf Windows."
 
-      - name: start.bat: Konfiguration nachgestellt
+      - name: "start.bat - Konfiguration nachgestellt"
         shell: pwsh
         # Derselbe Leseweg wie in start.bat, aber in einer eigenen Datei und
         # drei Varianten. Der Weg laesst sich nur auf Windows pruefen, und ein
