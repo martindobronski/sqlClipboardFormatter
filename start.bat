@@ -87,19 +87,23 @@ rem Eine kaputte Zeile wird uebersprungen, nie zum Abbruch: aus einem
 rem Tippfehler darf kein "das Programm startet nicht mehr" werden.
 rem
 rem Ausgabe ist Write-Output, nicht Write-Host: Batch liest hier aus einer
-rem Pipe, und nur der Erfolgsstrom landet darin. Write-Host schreibt an den
-rem Host und kommt in der Pipe nicht an - die Datei waere dann da, der
-rem Eintrag stillschweigend nicht, und start.bat stuende ohne Hinweis auf
-rem JAVA_HOME zurueck. Genau das hat der Windows-Lauf gezeigt: die Datei
-rem wurde gemeldet, der Eintrag nie verwendet.
+rem Pipe, und der Weg in diese Pipe fuehrt ueber den Erfolgsstrom. Write-Host
+rem gehoert zum Host und ist damit die falsche Quelle fuer Maschinenlesbar -
+rem auch wenn er auf diesem Rechner in der Pipe ankam.
 set "SQLFORMATTER_CONF=%~dp0start.local.conf"
 set "CFG_JAVA="
 set "CFG_MAVEN="
 set "CFG_MAVENJDK="
-if exist "%SQLFORMATTER_CONF%" for /f "usebackq tokens=1,* delims==" %%k in (`powershell -NoProfile -Command "foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Output ($k + '=' + $p[1].Trim()) } } }" 2^>nul`) do (
-    if /i "%%k"=="JAVA" set "CFG_JAVA=%%z"
-    if /i "%%k"=="MAVEN" set "CFG_MAVEN=%%z"
-    if /i "%%k"=="MAVEN-JDK" set "CFG_MAVENJDK=%%z"
+if exist "%SQLFORMATTER_CONF%" for /f "usebackq tokens=1,* delims==" %%a in (`powershell -NoProfile -Command "foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Output ($k + '=' + $p[1].Trim()) } } }" 2^>nul`) do (
+    rem %%a ist der Schluessel, %%b der Wert: bei "tokens=1,*" gehoert der Rest
+    rem in die Variable direkt hinter der letzten, also b nach a. Ein %%z gibt
+    rem es nicht - und ein undefiniertes %%z bleibt als "%z" stehen, statt zu
+    rem verschwinden. Genau daran ist der Eintrag gescheitert: die Datei wurde
+    rem gelesen, der Wert war "%z", "%CFG_JAVA%" zeigte auf nichts, und
+    rem start.bat fiel ohne ein Wort auf JAVA_HOME zurueck.
+    if /i "%%a"=="JAVA" set "CFG_JAVA=%%b"
+    if /i "%%a"=="MAVEN" set "CFG_MAVEN=%%b"
+    if /i "%%a"=="MAVEN-JDK" set "CFG_MAVENJDK=%%b"
 )
 rem --- Java suchen ----------------------------------------------------------
 :javaSuchen
