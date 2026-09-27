@@ -392,8 +392,12 @@ jobs:
           ) | Set-Content -Path $conf -Encoding ascii
 
           $ausgabe = cmd /c "start.bat -Pruefen" 2>&1
+          $code = $LASTEXITCODE
           $text = ($ausgabe | Out-String)
           Write-Host "=== Fall 1: brauchbarer Pfad mit Leerzeichen ==="
+          # Die Rueckgabe mit ausgeben: eine leere Ausgabe und ein Skript,
+          # das gar nicht erst gelaufen ist, sehen sonst gleich aus.
+          Write-Host "Rueckgabe: $code, Zeilen: $((($ausgabe | Out-String) -split "`n").Count - 1)"
           Write-Host $text
 
           if (-not $text.Contains("Konfig  :")) {
@@ -413,7 +417,9 @@ jobs:
           ) | Set-Content -Path $conf -Encoding ascii
 
           $ausgabe2 = cmd /c "start.bat -Pruefen" 2>&1
+          $code2 = $LASTEXITCODE
           $text2 = ($ausgabe2 | Out-String)
+          Write-Host "Rueckgabe: $code2"
           Write-Host "=== Fall 2: toter Pfad ==="
           Write-Host $text2
 

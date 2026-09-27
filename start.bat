@@ -94,15 +94,11 @@ set "SQLFORMATTER_CONF=%~dp0start.local.conf"
 set "CFG_JAVA="
 set "CFG_MAVEN="
 set "CFG_MAVENJDK="
-rem Schluessel und Wert stehen in %%a und %%b: bei tokens=1,* gehoert der Rest
-rem in die Variable direkt hinter der letzten, also b nach a. Ein %%z gibt es
-rem dort nicht - und eine falsche Variable verschwindet nicht, sie bleibt als
-rem %z im Text stehen. Genau daran ist der Eintrag gescheitert: die Datei
-rem wurde gelesen, der Wert war der Text z, %CFG_JAVA% zeigte auf nichts, und
-rem start.bat fiel ohne ein Wort auf JAVA_HOME zurueck. Aus diesem Grund steht
-rem hier auch nichts weiter im Rumpf: eine Zeile mit Anfuehrungszeichen oder
-rem Klammern darin liest cmd als Teil des Blocks und verliert die Klammer am
-rem Ende - die ganze Ausgabe bleibt dann leer.
+rem Schluessel und Wert: bei tokens=1,* steht der Rest in der Variablen
+rem direkt hinter der letzten. Ein Kommentar mit Prozentzeichen davor
+rem laesst cmd die Klammer am Ende des Blocks verschlucken - danach gibt
+rem das Skript gar nichts mehr aus, auch keine Fehlermeldung. Deshalb
+rem steht hier kein Prozentzeichen, und im Rumpf ueberhaupt kein Text.
 if exist "%SQLFORMATTER_CONF%" for /f "usebackq tokens=1,* delims==" %%a in (`powershell -NoProfile -Command "foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Output ($k + '=' + $p[1].Trim()) } } }" 2^>nul`) do (
     if /i "%%a"=="JAVA" set "CFG_JAVA=%%b"
     if /i "%%a"=="MAVEN" set "CFG_MAVEN=%%b"
