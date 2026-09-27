@@ -86,11 +86,53 @@ for arg in "$@"; do
 done
 set -- ${JVM_ARGUMENTE[@]+"${JVM_ARGUMENTE[@]}"}
 
+# --- Konfiguration ----------------------------------------------------------
+# start.local.conf gehoert neben dieses Skript, wird aber nicht mitversioniert:
+# start.conf.example ist die Vorlage, die Kopie steht in der .gitignore. Ohne
+# die Datei laeuft alles wie bisher - sie ist optional und nie Pflicht.
+#
+# Gelesen wird genauso wie in start.bat, damit beide Skripte dieselbe Datei
+# gleich verstehen. Das ist hier ausfuehrbar und wird unten auch getestet,
+# waehrend die Batch-Variante nur auf einem Windows-Reigner laufbar ist.
+#
+# Eine kaputte Zeile wird uebersprungen, nie zum Abbruch. Bei "set -e" waere
+# ein unerwartetes Muster sonst ein stiller Abbruch, und aus einem
+# Tippfehler darf kein "das Programm startet nicht mehr" werden.
+CONF="./start.local.conf"
+CFG_JAVA=""
+CFG_MAVEN=""
+CFG_MAVENJDK=""
+if [ -f "$CONF" ]; then
+    while IFS= read -r zeile || [ -n "$zeile" ]; do
+        zeile="${zeile#"${zeile%%[![:space:]]*}"}"
+        case "$zeile" in
+            '' | \#*) continue ;;
+            *=*) ;;
+            *) continue ;;
+        esac
+        schluessel="${zeile%%=*}"
+        wert="${zeile#*=}"
+        # Alles ausser Buchstaben, Ziffern und Bindestrich aus dem Schluessel
+        # entfernen: das macht fuehrende Leerzeichen und ein BOM vom Editor
+        # harmlos, ohne eine Sonderbehandlung fuer Bytes zu brauchen.
+        schluessel=$(printf '%s' "$schluessel" | tr -cd 'A-Za-z0-9-' | tr 'A-Z' 'a-z')
+        wert="${wert#"${wert%%[![:space:]]*}"}"
+        wert="${wert%"${wert##*[![:space:]]}"}"
+        [ -n "$wert" ] || continue
+        case "$schluessel" in
+            java) CFG_JAVA="$wert" ;;
+            maven) CFG_MAVEN="$wert" ;;
+            maven-jdk) CFG_MAVENJDK="$wert" ;;
+        esac
+    done < "$CONF"
+fi
+
 # --- Java suchen -----------------------------------------------------------
 # Nicht "which java": das findet auch das macOS-Stub unter
 # /usr/bin/java, das nur "Java ist nicht installiert" ausgibt und mit
 # Fehler 1 endet. -version klappt die Candidate wirklich auf.
-# Reihenfolge: mitgelieferte Laufzeit, SQLFORMATTER_JAVA, JAVA_HOME, PATH.
+# Reihenfolge: mitgelieferte Laufzeit, start.local.conf, SQLFORMATTER_JAVA,
+# JAVA_HOME, PATH.
 # Die mitgelieferte gewinnt, weil sie die einzige ist, von der wir wissen,
 # dass sie zum Jar passt. Jeder Zweig prueft mit -version - ein halb
 # entpackter Download darf den Start nicht verhindern, wenn es ein
@@ -100,6 +142,10 @@ QUELLE=""
 if [ -x "./jre/bin/java" ] && ./jre/bin/java -version >/dev/null 2>&1; then
     JAVA="./jre/bin/java"
     QUELLE="mitgeliefert"
+elif [ -n "$CFG_JAVA" ] && [ -x "$CFG_JAVA" ] \
+        && "$CFG_JAVA" -version >/dev/null 2>&1; then
+    JAVA="$CFG_JAVA"
+    QUELLE="start.local.conf"
 elif [ -n "${SQLFORMATTER_JAVA:-}" ] && [ -x "$SQLFORMATTER_JAVA" ] \
         && "$SQLFORMATTER_JAVA" -version >/dev/null 2>&1; then
     JAVA="$SQLFORMATTER_JAVA"
@@ -131,7 +177,9 @@ fi
 # dieselbe Erkennung benutzen. Ohne Maven laesst sich ein fehlendes Jar nicht
 # erzeugen - das ist dann ein klarer Fehler und kein stilles Scheitern.
 MVN=""
-if [ -x ./mvnw ]; then
+if [ -n "$CFG_MAVEN" ] && [ -x "$CFG_MAVEN" ]; then
+    MVN="$CFG_MAVEN"
+elif [ -x ./mvnw ]; then
     MVN="./mvnw"
 elif command -v mvn >/dev/null 2>&1; then
     MVN="mvn"
@@ -146,6 +194,10 @@ if [ "$PRUEFEN" = 1 ]; then
     # Die Quelle mit anzeigen: "Java: /pfad/zum/java" allein laesst offen,
     # ob das nun das mitgelieferte ist oder ein irgendwo installiertes.
     echo "Java    : $JAVA  ($QUELLE)"
+    # Die Konfigurationszeile steht hier und nicht weiter unten, damit
+    # start.sh und start.bat dieselbe Reihenfolge zeigen. Beide Ausgaben
+    # werden nebeneinander in der Anleitung abgedruckt.
+    if [ -f "$CONF" ]; then echo "Konfig  : $CONF"; else echo "Konfig  : keine"; fi
     echo "Maven   : ${MVN:-nicht gefunden}"
     # Pfad mit ausgeben: dann sieht man beim Pruefen sofort, ob die Version
     # aus der pom.xml wirklich die ist, die gebaut wurde.
@@ -162,7 +214,15 @@ if [ "$NEUBAUEN" = 1 ] || [ ! -f "$JAR" ] \
         || [ -n "$(find src pom.xml -newer "$JAR" 2>/dev/null)" ]; then
     [ -n "$MVN" ] || fehler "weder ./mvnw noch mvn gefunden - Jar kann nicht gebaut werden."
     echo "Bauen ..."
-    "$MVN" -q -DskipTests package
+    # Maven startet seine eigene JVM ueber JAVA_HOME - dieselbe Falle wie in
+    # start.bat. Der Eintrag wird nur diesem einen Aufruf mitgegeben, damit
+    # der Start der App unberuehrt bleibt. Ohne Eintrag bleibt JAVA_HOME,
+    # wie es ohne diese Datei immer war.
+    if [ -n "$CFG_MAVENJDK" ]; then
+        JAVA_HOME="$CFG_MAVENJDK" "$MVN" -q -DskipTests package
+    else
+        "$MVN" -q -DskipTests package
+    fi
 fi
 
 [ -f "$JAR" ] || fehler "$JAR fehlt trotz Bauvorgang."

@@ -16,6 +16,12 @@
 # CRLF-Skript nicht startet ("bad interpreter"). Deshalb ausdruecklich LF.
 *.sh text eol=lf
 
+# Die Vorlage fuer start.local.conf: LF aus demselben Grund, plus weil sie
+# unveraendert kopiert wird. Beide Skripte schlucken ein CRLF zwar, aber eine
+# Datei, die als Muster fuer den eigenen Rechner dient, sollte nicht zwischen
+# beiden Welten pendeln.
+start.conf.example text eol=lf
+
 # Java- und XML-Dateien bleiben unangetastet: CRLF darin ist harmlos, und
 # Maven liest sie mit der in der pom.xml gesetzten Kodierung.
 *.java text

@@ -11,6 +11,15 @@ build/
 # start.sh finden sie, wenn sie da ist, und laufen ohne sie weiter.
 jre/
 
+# Maschinenspezifische Pfade fuer Java, Maven und das JDK, mit dem Maven
+# uebersetzt. Die Vorlage start.conf.example ist eingecheckt, die Kopie
+# nicht: sonst landen die Pfade eines Rechners in der Historie. Wer die
+# Kopie loescht, laeuft wieder mit der normalen Suche.
+# Wichtig: Muster stehen hier ohne fuehrende Leerzeichen. Eine eingerueckte
+# Zeile ist fuer Git ein anderes Muster - der Ordner jre/ waere dann
+# wieder versionierbar, und zwar mit seinen 180 MB.
+start.local.conf
+
 # IntelliJ: Modul- und Artifact-Dateien werden beim Maven-Import erzeugt.
 # Wichtig: .idea/ selbst darf NICHT als Verzeichnis ausgeschlossen werden,
 # sonst greifen die Ausnahmen unten nicht - Git steigt in ausgeschlossene

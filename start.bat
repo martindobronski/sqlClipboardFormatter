@@ -25,7 +25,7 @@ rem ein Pipebruch in einer Zeilenfortsetzung beendet das Skript ohne Meldung.
 rem [regex]::Match liefert den ersten Treffer direkt - die Kette aus
 rem Select-String und Select-Object laesst sich damit einsparen.
 set "VERSION="
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "[regex]::Match((Get-Content -Raw pom.xml), '<version>([^<]+)</version>').Groups.Value" 2^>nul`) do (
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "[regex]::Match((Get-Content -Raw pom.xml),'<version>([^<]+)</version>').Groups[1].Value" 2^>nul`) do (
     if not defined VERSION set "VERSION=%%v"
 )
 rem Im Repository steht der Name im pom.xml. Im Release-ZIP gibt es keine
@@ -51,7 +51,7 @@ rem Nicht "if ... set ... & shift & goto": das & trennt die Befehle
 rem unbedingt, auch wenn die Bedingung nicht zutrifft. Dann wuerden die
 rem Argumente stillschweigend verschluckt.
 :argumente
-if "%~1"=="" goto javaSuchen
+if "%~1"=="" goto konfiguration
 if /i "%~1"=="-Neu" goto neu
 if /i "%~1"=="-Pruefen" goto pruefen
 if /i "%~1"=="--pruefen" goto pruefen
@@ -67,13 +67,40 @@ goto argumente
 set "PRUEFEN=1"
 shift
 goto argumente
+:konfiguration
+rem --- Konfiguration ---------------------------------------------------------
+rem start.local.conf gehoert neben diese Datei, wird aber nicht mitversioniert:
+rem start.conf.example ist die Vorlage, die Kopie steht in der .gitignore.
+rem Ohne die Datei laeuft alles wie bisher - sie ist optional und nie Pflicht.
+rem
+rem Gelesen wird mit einer Zeile PowerShell, weil Batch an den Kanten
+rem scheitert, ohne zu sagen wo: ein BOM aus dem Editor macht aus dem
+rem Schluesselnamen Muell, ein fuehrendes Leerzeichen likewise, und beide
+rem Fehler waeren still. PowerShell ist ohnehin schon noetig - fuer die
+rem Version weiter oben und die Veraltungspruefung weiter unten.
+rem
+rem Der Pfad steht in einer Umgebungsvariablen statt im Skripttext. Ein Pfad
+rem mit Anfuehrungszeichen im Namen wuerde sonst die ganze Zeile zerlegen, und
+rem Batch laesst sich dazu nicht fehlerfrei zitieren.
+rem
+rem Eine kaputte Zeile wird uebersprungen, nie zum Abbruch: aus einem
+rem Tippfehler darf kein "das Programm startet nicht mehr" werden.
+set "SQLFORMATTER_CONF=%~dp0start.local.conf"
+set "CFG_JAVA="
+set "CFG_MAVEN="
+set "CFG_MAVENJDK="
+if exist "%SQLFORMATTER_CONF%" for /f "usebackq tokens=1,* delims==" %%k in (`powershell -NoProfile -Command "foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Host ($k + '=' + $p[1].Trim()) } } }" 2^>nul`) do (
+    if /i "%%k"=="JAVA" set "CFG_JAVA=%%z"
+    if /i "%%k"=="MAVEN" set "CFG_MAVEN=%%z"
+    if /i "%%k"=="MAVEN-JDK" set "CFG_MAVENJDK=%%z"
+)
 rem --- Java suchen ----------------------------------------------------------
 :javaSuchen
-rem Reihenfolge: Explizit vorgegebenes JDK, mitgelieferte Laufzeit, SQLFORMATTER_JAVA, JAVA_HOME, PATH.
+rem Reihenfolge: mitgelieferte Laufzeit, start.local.conf, SQLFORMATTER_JAVA, JAVA_HOME, PATH.
 set "JAVA="
 set "QUELLE="
-if exist "c:\dev\jdk\jdk-25.0.2+10\bin\java.exe" "c:\dev\jdk\jdk-25.0.2+10\bin\java.exe" -version >nul 2>&1 && set "JAVA=c:\dev\jdk\jdk-25.0.2+10\bin\java.exe" && set "QUELLE=vorgegebenes JDK 25"
 if not defined JAVA if exist "%~dp0jre\bin\java.exe" "%~dp0jre\bin\java.exe" -version >nul 2>&1 && set "JAVA=%~dp0jre\bin\java.exe" && set "QUELLE=mitgeliefert"
+if not defined JAVA if defined CFG_JAVA if exist "%CFG_JAVA%" "%CFG_JAVA%" -version >nul 2>&1 && set "JAVA=%CFG_JAVA%" && set "QUELLE=start.local.conf"
 if not defined JAVA if defined SQLFORMATTER_JAVA if exist "%SQLFORMATTER_JAVA%" "%SQLFORMATTER_JAVA%" -version >nul 2>&1 && set "JAVA=%SQLFORMATTER_JAVA%" && set "QUELLE=SQLFORMATTER_JAVA"
 if not defined JAVA if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" "%JAVA_HOME%\bin\java.exe" -version >nul 2>&1 && set "JAVA=%JAVA_HOME%\bin\java.exe" && set "QUELLE=JAVA_HOME"
 if not defined JAVA for /f "delims=" %%j in ('where java 2^>nul') do if not defined JAVA "%%j" -version >nul 2>&1 && set "JAVA=%%j" && set "QUELLE=PATH"
@@ -84,10 +111,8 @@ if not defined JAVA (
 )
 rem --- Maven suchen ---------------------------------------------------------
 set "MVN="
-rem Prioritaet 1: Das explizit vorgegebene Maven-Verzeichnis
-if exist "c:\dev\Tools\maven\apache-maven-3.6.3\bin\mvn.cmd" (
-    set "MVN=c:\dev\Tools\maven\apache-maven-3.6.3\bin\mvn.cmd"
-)
+rem Prioritaet 1: Der Pfad aus start.local.conf
+if defined CFG_MAVEN if exist "%CFG_MAVEN%" set "MVN=%CFG_MAVEN%"
 rem Prioritaet 2: Der Wrapper des Projekts
 if not defined MVN if exist "mvnw.cmd" set "MVN=mvnw.cmd"
 rem Prioritaet 3: Globales Maven im PATH
@@ -111,6 +136,7 @@ rem funktioniert hat.
 rem Die Quelle mit anzeigen: "Java: \pfad\zum\java" allein laesst offen, ob
 rem das nun das mitgelieferte ist oder ein irgendwo installiertes.
 echo Java    : %JAVA%  (%QUELLE%)
+if exist "%SQLFORMATTER_CONF%" (echo Konfig  : %SQLFORMATTER_CONF%) else (echo Konfig  : keine)
 if defined MVN (echo Maven   : %MVN%) else (echo Maven   : nicht gefunden)
 if exist "%JAR%" (echo Jar     : %JAR% - vorhanden) else (echo Jar     : %JAR% - fehlt)
 if defined BAUEN (echo Bauen   : ja) else (echo Bauen   : falls Quellen neuer)
@@ -126,9 +152,16 @@ if not defined MVN (
 )
 echo Bauen ...
 
-rem JAVA_HOME temporaer auf das gewuenschte JDK 25 setzen, damit Maven damit kompiliert
+rem Maven startet seine eigene JVM ueber JAVA_HOME. Zeigt der auf eine zu
+rem alte Laufzeit, schlaegt der Build fehl - und zwar genau dann, wenn auf
+rem dem Rechner noch ein altes Java installiert ist. Der Pfad kommt darum
+rem aus start.local.conf und nur, wenn dort etwas steht. Ohne Eintrag bleibt
+rem JAVA_HOME unangetastet, wie es ohne diese Datei immer war.
+rem Das setlocal/endlocal darum herum begrenzt die Aenderung auf den einen
+rem Maven-Aufruf; ohne das bliebe das fremde JAVA_HOME auch fuer den Start
+rem der App stehen.
 setlocal
-set "JAVA_HOME=c:\dev\jdk\jdk-25.0.2+10"
+if defined CFG_MAVENJDK set "JAVA_HOME=%CFG_MAVENJDK%"
 
 call "%MVN%" -q -DskipTests package
 if errorlevel 1 (

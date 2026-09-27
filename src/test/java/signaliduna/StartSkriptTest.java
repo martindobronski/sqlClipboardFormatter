@@ -12,8 +12,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -284,6 +286,291 @@ class StartSkriptTest {
         }
     }
 
+    // --- start.local.conf ----------------------------------------------------
+    //
+    // Die folgenden Tests laufen start.sh wirklich, nicht nur ueber einen
+    // Textvergleich. Fuer start.bat gibt es keinen ausfuehrbaren Weg hier, der
+    // Schalter -Pruefen liefert dort die Quelle mit; der Windows-Nachweis fuer
+    // start.bat steht deshalb in windows-pruefung.yml.
+
+    @Test
+    @DisplayName("start.local.conf setzt das Java, aus dem der Start kommt")
+    void konfiguration_setzt_das_java() throws Exception {
+        // Der Rueckfall ist der ganze Zweck der Datei: auf einem Rechner, auf
+        // dem ein altes Java im PATH steht, nennt start.sh sonst das alte.
+        String pfad = legeJavaShimAn("konfig-einfach");
+        legeKonfigurationAn("java=" + pfad + "\n");
+        try {
+            Ergebnis ergebnis = fuehreAus(List.of());
+            assertEquals(0, ergebnis.exitcode, () -> "Abbruch: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("(start.local.conf)"),
+                    () -> "die Konfiguration wurde nicht genutzt: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("Konfig  : "),
+                    () -> "der Pruefmodus sagt nicht, ob die Datei gelesen wurde: "
+                            + ergebnis.output);
+        } finally {
+            entferneKonfiguration();
+            entferneOrdner(new File("konfig-einfach"));
+        }
+    }
+
+    @Test
+    @DisplayName("start.local.conf erlaubt Leerzeichen im Pfad")
+    void konfiguration_erlaubt_leerzeichen() throws Exception {
+        // "C:\\Program Files\\..." ist der Normalfall, nicht die Ausnahme. Ein
+        // Parser, der am ersten Leerzeichen abschneidet, liefert einen Pfad, den
+        // es nicht gibt - und der Start faellt dann auf etwas Zurueck, das man
+        // nicht mit dem Eintrag in der Datei verbindet. Der Shim-Ordner
+        // heisst deshalb "mit leerzeichen".
+        String pfad = legeJavaShimAn("mit leerzeichen");
+        legeKonfigurationAn("java=" + pfad + "\n");
+        try {
+            Ergebnis ergebnis = fuehreAus(List.of());
+            assertEquals(0, ergebnis.exitcode, () -> "Abbruch: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("(start.local.conf)"),
+                    () -> "Pfad mit Leerzeichen wurde verworfen: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("mit leerzeichen/java"),
+                    () -> "der Pfad kam abgeschnitten an: " + ergebnis.output);
+        } finally {
+            entferneKonfiguration();
+            entferneOrdner(new File("mit leerzeichen"));
+        }
+    }
+
+    @Test
+    @DisplayName("start.local.conf ueberspringt Kommentare und kaputte Zeilen")
+    void konfiguration_ueberspringt_kaputtes() throws Exception {
+        // Alles, was beim Schreiben einer Konfigurationsdatei passieren kann:
+        // ein Kommentar, der selbst ein = enthaelt, fuehrende Leerzeichen, ein
+        // BOM aus dem Editor, eine Zeile ganz ohne =, ein Schluessel ganz ohne
+        // Wert. Erwartet wird, dass nur die echte Zuweisung wirkt und nichts
+        // davon den Start verhindert. Ein stilles Scheitern waere hier das
+        // Schlimmste: die Datei waere da, der Eintrag nicht.
+        String pfad = legeJavaShimAn("konfig-kaputt");
+        legeKonfigurationAn(
+                "# Kommentar mit java=" + pfad + " darf nichts bewirken\n"
+                + "\n"
+                + "   java   =   " + pfad + "   \n"
+                + "\uFEFFMAVEN=/irgendwo/nicht\n"
+                + "MUEHL ohne gleichzeichen\n"
+                + "=\n"
+                + "maven-jdk=\n"
+                + "unbekannter-schluessel=egal\n");
+        try {
+            Ergebnis ergebnis = fuehreAus(List.of());
+            assertEquals(0, ergebnis.exitcode, () -> "Abbruch: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("(start.local.conf)"),
+                    () -> "der einzige gueltige Eintrag kam nicht durch: " + ergebnis.output);
+        } finally {
+            entferneKonfiguration();
+            entferneOrdner(new File("konfig-kaputt"));
+        }
+    }
+
+    @Test
+    @DisplayName("ein Eintrag auf einen ungueltigen Pfad laesst den Start laufen")
+    void ungueltiger_konfigurationspfad_bremst_nicht() throws Exception {
+        // Der wichtigste Test fuer den Normalfall: ein Rechner, auf dem der
+        // eingetragene Pfad nicht (mehr) existiert. Der Start darf daran
+        // nicht scheitern - es gibt ja das Java im PATH, und das Skript kann
+        // es selbst finden. Sonst macht ein falscher Eintrag die App
+        // unstartbar, obwohl vorher alles lief.
+        legeKonfigurationAn("java=/gibt/es/nicht/java\nmaven=/gibt/es/nicht/mvn.cmd\n");
+        try {
+            Ergebnis ergebnis = fuehreAus(List.of("-Pruefen"));
+            assertEquals(0, ergebnis.exitcode, () -> "Abbruch: " + ergebnis.output);
+            assertFalse(ergebnis.output.contains("(start.local.conf)"),
+                    () -> "ein toter Pfad wurde als benutzt gemeldet: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("Java    :"),
+                    () -> "es wurde gar kein Java gefunden: " + ergebnis.output);
+        } finally {
+            entferneKonfiguration();
+        }
+    }
+
+    @Test
+    @DisplayName("jre/ gewinnt weiterhin gegen start.local.conf")
+    void jre_gewinnt_gegen_die_konfiguration() throws Exception {
+        // Die Zusage des Releases: die mitgelieferte Laufzeit ist die einzige,
+        // von der wir wissen, dass sie zum Jar passt. Ein Eintrag in der
+        // Konfiguration darf sie nicht ueberstimmen - sonst verliert das
+        // Release die Eigenschaft, auf der es beruht, und zwar nur auf den
+        // Rechnern, auf denen jemand einen Eintrag gemacht hat. Genau das waere
+        // der denkbar schlechte Fall: eine Einschraenkung, die nur dort
+        // auffaellt, wo jemand hilfreich sein wollte.
+        legeJreAn(true);
+        String pfad = legeJavaShimAn("konfig-neben-jre");
+        legeKonfigurationAn("java=" + pfad + "\n");
+        try {
+            Ergebnis ergebnis = fuehreAus(List.of());
+            assertEquals(0, ergebnis.exitcode, () -> "Abbruch: " + ergebnis.output);
+            assertTrue(ergebnis.output.contains("(mitgeliefert)"),
+                    () -> "jre/ wurde von der Konfiguration verdraengt: " + ergebnis.output);
+            assertFalse(ergebnis.output.contains("(start.local.conf)"),
+                    () -> "die Konfiguration kam vor jre/ zum Zug: " + ergebnis.output);
+        } finally {
+            entferneKonfiguration();
+            entferneOrdner(new File("konfig-neben-jre"));
+            entferneJre();
+        }
+    }
+
+    @Test
+    @DisplayName("start.bat setzt JAVA_HOME fuer Maven nur mit start.local.conf")
+    void startbat_setzt_java_home_nur_bedingt() throws Exception {
+        // Der Bug, den das alles hier ausgeloest hat: ein fest eingetragenes
+        // "set JAVA_HOME=..." im Skript. Maven startet seine JVM ueber
+        // JAVA_HOME und faellt sonst nicht auf den PATH zurueck - auf jedem
+        // Rechner ohne genau dieses JDK war der Build damit kaputt, ohne dass
+        // man etwas an der Konfiguration gesehen haette. Deshalb muss die
+        // Zeile an einem Schalter haengen.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        boolean bedingt = false;
+        for (String zeile : zeilen) {
+            if (zeile.contains("set \"JAVA_HOME=") && !zeile.strip().startsWith("rem")) {
+                assertTrue(zeile.contains("if defined CFG_MAVENJDK"),
+                        () -> "JAVA_HOME wird ohne Bedingung gesetzt: " + zeile.strip());
+                bedingt = true;
+            }
+        }
+        assertTrue(bedingt, "start.bat traegt JAVA_HOME nicht mehr ueber start.local.conf");
+    }
+
+    @Test
+    @DisplayName("start.bat und start.sh tragen keine fest eingetragenen Pfade")
+    void keine_fest_eingetragenen_pfade() throws Exception {
+        // Maschinenspezifische Pfade gehoeren in start.local.conf, nicht in
+        // eine Datei, die an jeden Nutzer ausgeliefert wird. Geprueft wird
+        // nicht nur auf einen bestimmten Pfad, sondern auf die Form: jeder Wert,
+        // der in JAVA, JAVA_HOME, MVN oder CFG_* gesetzt wird, muss eine
+        // Variable sein. Sonst rutscht der naechste feste Pfad unbemerkt
+        // wieder herein.
+        Pattern hart = Pattern.compile("set \"(JAVA|JAVA_HOME|MVN|CFG_[A-Z]+)=[A-Za-z]:",
+                Pattern.CASE_INSENSITIVE);
+        for (String skript : List.of("start.bat", "start.sh")) {
+            List<String> zeilen = Files.readAllLines(new File(skript).toPath(),
+                    StandardCharsets.ISO_8859_1);
+            for (String zeile : zeilen) {
+                String ohneKommentar = zeile.strip();
+                if (ohneKommentar.startsWith("rem") || ohneKommentar.startsWith("#")) {
+                    continue;
+                }
+                assertFalse(hart.matcher(ohneKommentar).find(),
+                        () -> skript + " traegt einen fest eingetragenen Pfad: " + ohneKommentar);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("beide Skripte lesen dieselben drei Schluessel")
+    void beide_skripte_kennen_dieselben_schluessel() throws Exception {
+        // Sonst haetten die beiden Startwege unterschiedliche Regeln, und die
+        // Reihenfolge in der Anleitung waere fuer eines von beiden falsch.
+        for (String skript : List.of("start.bat", "start.sh")) {
+            String inhalt = Files.readString(new File(skript).toPath(),
+                    StandardCharsets.ISO_8859_1);
+            for (String schluessel : List.of("start.local.conf", "CFG_JAVA",
+                    "CFG_MAVEN", "CFG_MAVENJDK")) {
+                assertTrue(inhalt.contains(schluessel),
+                        () -> skript + " kennt " + schluessel + " nicht");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("start.bat liest die Konfiguration, bevor es Java sucht")
+    void startbat_liest_die_konfiguration_vor_der_java_suche() throws Exception {
+        // Der Sprung, der den ganzen Konfigurationsblock wertlos machte: der
+        // Argument-Loop endet mit "goto javaSuchen", und dieses Label stand
+        // hinter dem Block. Die Datei wurde also nie gelesen - bei jedem
+        // Aufruf, auch ohne Argument. Im Quelltext ist so ein Sprung ueber
+        // ausfuehrbare Zeilen nicht zu sehen, und der Start klappt hinterher
+        // trotzdem, weil es ohne die Datei genauso laeuft: das ist ein Fehler,
+        // der aussieht wie ein Rechner, der die Datei nicht braucht.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        Pattern ausstieg = Pattern.compile("^if \"%~1\"==\"\" goto :?(\\S+)$",
+                Pattern.CASE_INSENSITIVE);
+        int spring = -1;
+        String gefunden = "";
+        for (int i = 0; i < zeilen.size(); i++) {
+            Matcher treffer = ausstieg.matcher(zeilen.get(i).strip());
+            if (treffer.matches()) {
+                spring = i;
+                gefunden = treffer.group(1);
+            }
+        }
+        final String ziel = gefunden;
+        assertTrue(spring >= 0, "start.bat hat keine Argument-Schleife gefunden");
+        int konfig = indexeVon(zeilen, z -> z.contains("set \"SQLFORMATTER_CONF="));
+        assertTrue(konfig >= 0, "start.bat liest keine start.local.conf");
+        int label = indexeVonLabel(zeilen, ziel);
+        assertTrue(label >= 0, () -> "start.bat springt zu einem Label, das es nicht gibt: " + ziel);
+        assertTrue(label < konfig, "start.bat springt ueber die Konfiguration hinweg: Zeile "
+                + (label + 1) + " liegt vor dem Lesen in Zeile " + (konfig + 1)
+                + " - start.local.conf wird nie gelesen");
+    }
+
+    @Test
+    @DisplayName("jeder Sprung und jedes call in start.bat hat sein Label")
+    void startbat_jeder_sprung_hat_sein_label() throws Exception {
+        // Ein Tippfehler im Ziel springt ans Ende der Datei, und cmd.exe
+        // beendet das Skript dann ohne eine einzige Meldung. Der Pruefmodus
+        // sagt nichts mehr, der Start tut so, als gaebe es kein Java. Auf
+        // macOS gibt es dafuer keinen Test: die Datei laeuft dort nie.
+        List<String> zeilen = Files.readAllLines(new File("start.bat").toPath(),
+                StandardCharsets.ISO_8859_1);
+        Pattern sprung = Pattern.compile("^(?:goto|call) :?([A-Za-z][A-Za-z0-9]*)",
+                Pattern.CASE_INSENSITIVE);
+        for (String zeile : zeilen) {
+            String ohneKommentar = zeile.strip();
+            if (ohneKommentar.toLowerCase().startsWith("rem")) {
+                continue;
+            }
+            Matcher treffer = sprung.matcher(ohneKommentar);
+            if (!treffer.find()) {
+                continue;
+            }
+            String ziel = treffer.group(1);
+            assertTrue(indexeVonLabel(zeilen, ziel) >= 0,
+                    () -> "start.bat springt zu einem Label, das es nicht gibt: " + ziel);
+        }
+    }
+
+    @Test
+    @DisplayName("die Vorlage start.conf.example ist unwirksam")
+    void die_vorlage_ist_unwirksam() throws Exception {
+        // Sie wird als Muster zum Kopieren verkauft. Waere in ihr auch nur eine
+        // aktive Zuweisung, wuerde jemand sie ungeprueft benutzen und sein
+        // Rechnerpfand wuerde den Weg in die Historie finden.
+        List<String> zeilen = Files.readAllLines(new File("start.conf.example").toPath(),
+                StandardCharsets.ISO_8859_1);
+        Pattern zuweisung = Pattern.compile("^\\s*[A-Za-z][A-Za-z0-9-]*\\s*=");
+        for (String zeile : zeilen) {
+            String ohneKommentar = zeile.strip();
+            if (ohneKommentar.startsWith("#")) {
+                continue;
+            }
+            assertFalse(zuweisung.matcher(ohneKommentar).find(),
+                    () -> "die Vorlage enthaelt eine wirksame Zeile: " + ohneKommentar);
+        }
+    }
+
+    @Test
+    @DisplayName("start.local.conf wird nicht mitversioniert")
+    void lokale_konfiguration_ist_nicht_versioniert() throws Exception {
+        // Die Kopie traegt die Pfade eines Rechners. Die Vorlage dagegen ist
+        // eingecheckt - ohne sie wuesste niemand, welche Schluessel es gibt.
+        assertTrue(ignoriert("start.local.conf"),
+                "start.local.conf wird nicht ignoriert - die Pfade eines Rechners"
+                        + " landen in der Historie");
+        assertFalse(ignoriert("start.conf.example"),
+                "die Vorlage wird ignoriert - ohne sie kennt niemand die Schluessel");
+        assertTrue(new File("start.conf.example").isFile(),
+                "start.conf.example fehlt - ohne Vorlage ist die Datei nicht auffindbar");
+    }
+
     @Test
     @DisplayName("start.bat zitiert den Pfad der mitgelieferten Laufzeit")
     void startbat_quotet_den_jre_pfad() throws Exception {
@@ -305,13 +592,12 @@ class StartSkriptTest {
 
     @Test
     @DisplayName("jre/ ist von der Versionsverwaltung ausgenommen")
-    void jre_ist_nicht_versioniert() throws Exception {
+    void jre_ist_nicht_versioniert() {
         // Rund 90 MB Binaerdateien, je nach Plattform verschieden. Sie duerfen
         // nicht in die Historie: jeder Clone muesste sie sonst mitziehen, fuer
         // immer, auf jeder Plattform.
-        String gitignore = Files.readString(new File(".gitignore").toPath(), StandardCharsets.UTF_8);
-        assertTrue(gitignore.lines().anyMatch(z -> z.strip().equals("jre/")),
-                "jre/ steht nicht in der .gitignore");
+        assertTrue(ignoriert("jre/bin/java"),
+                "jre/ wird nicht ignoriert - die Laufzeit landet in der Historie");
     }
 
     @Test
@@ -400,6 +686,49 @@ class StartSkriptTest {
         }
     }
 
+    /**
+     * Legt ein ausfuehrbares {@code java} unter dem genannten Ordnernamen an.
+     *
+     * <p>Der Ordnername darf Leerzeichen enthalten - genau darum geht es bei
+     * den Tests zur Konfiguration. Der Inhalt ist ein Skript statt eines
+     * Verweises: unter Windows erlaubt das Anlegen eines Symbols einen, einem
+     * Verweis nicht ohne Developer-Modus.
+     *
+     * @param ordnername Name des Ordners im Projektverzeichnis, mit Leerzeichen
+     *                   erlaubt
+     * @return der Pfad, wie er in {@code start.local.conf} eingetragen wird
+     */
+    private String legeJavaShimAn(String ordnername) throws Exception {
+        File ordner = new File(ordnername);
+        assertTrue(ordner.mkdirs() || ordner.isDirectory(),
+                "Shim-Ordner liess sich nicht anlegen");
+        File java = new File(ordner, "java");
+        String echtesJava = System.getProperty("java.home") + File.separator + "bin"
+                + File.separator + "java";
+        Files.writeString(java.toPath(),
+                "#!/bin/sh\nexec \"" + echtesJava + "\" \"$@\"\n", StandardCharsets.UTF_8);
+        assertTrue(java.setExecutable(true), "Ausfuehrbarkeit liess sich nicht setzen");
+        return "./" + ordnername + "/java";
+    }
+
+    /** Legt {@code start.local.conf} mit dem gegebenen Inhalt an.*/
+    private void legeKonfigurationAn(String inhalt) throws Exception {
+        Files.writeString(new File("start.local.conf").toPath(), inhalt,
+                StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Raeumt {@code start.local.conf} wieder weg.
+     *
+     * <p>Die Datei steht in der .gitignore und ist damit schon harmlos, wenn
+     * ein Test sie liegen laesst. Sie zu loeschen kostet nichts und haelt den
+     * naechsten Test davon ab, einen Eintrag zu erben, den niemand gesetzt
+     * hat.
+     */
+    private void entferneKonfiguration() {
+        new File("start.local.conf").delete();
+    }
+
     /**raeumt {@code jre/} wieder weg, damit ein Fehlschlag nichts zuruecklaesst.*/
     private void entferneJre() {
         File jre = new File("jre");
@@ -428,6 +757,50 @@ class StartSkriptTest {
             }
         }
         ordner.delete();
+    }
+
+    /**
+     * Beantwortet die Frage, ob Git den Pfad ignoriert - mit Git selbst.
+     *
+     * <p>Der Textvergleich in der Datei ist genau daran gescheitert: die Zeile
+     * stand in der {@code .gitignore}, nur mit zwei Leerzeichen davor, und Git
+     * las sie als ein anderes Muster. Der Test verglich {@code zeile.strip()}
+     * und meldete „in Ordnung", waehrend der Ordner {@code jre/} mit seinen
+     * 180 MB unversioniert auf der Platte lag. Eine Zeile zu lesen beweist
+     * nichts ueber die Wirkung einer Zeile - also wird die Wirkung gefragt.
+     *
+     * <p>{@code --no-index} noetig: ohne das schweigt Git ueber Pfade, die
+     * bereits versioniert sind, und der Test waere bei einem bereits
+     * eingecheckten {@code start.conf.example} stillschweigend gruen.
+     *
+     * <p>Ohne Git im Arbeitsverzeichnis (etwa in einer ausgelieferten
+     * Quellkopie) wird die Pruefung uebersprungen statt geraten.
+     */
+    private boolean ignoriert(String pfad) {
+        Ergebnis ergebnis = fuehreRoh(List.of("git", "check-ignore", "-q", "--no-index", pfad));
+        if (ergebnis.exitcode == -1 || ergebnis.exitcode == 128) {
+            Assumptions.assumeTrue(false,
+                    "git check-ignore lieferte keine Antwort (" + ergebnis.output
+                            + ") - die Ignore-Regel ist so nicht pruefbar");
+        }
+        return ergebnis.exitcode == 0;
+    }
+
+    /** Index der ersten Zeile, auf die die Bedingung zutrifft, sonst -1.*/
+    private static int indexeVon(List<String> zeilen,
+            java.util.function.Predicate<String> bedingung) {
+        for (int i = 0; i < zeilen.size(); i++) {
+            if (bedingung.test(zeilen.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Index des Labels {@code :name}, sonst -1. Groß- und Kleinschreibung egal,
+     *  weil cmd.exe sie nicht unterscheidet.*/
+    private static int indexeVonLabel(List<String> zeilen, String name) {
+        return indexeVon(zeilen, z -> z.strip().equalsIgnoreCase(":" + name));
     }
 
     private static String bash() {
