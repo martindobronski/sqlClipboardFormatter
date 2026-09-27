@@ -102,13 +102,17 @@ for /f "usebackq tokens=1,* delims==" %%a in (`powershell -NoProfile -Command "t
 rem --- Java suchen ----------------------------------------------------------
 :javaSuchen
 rem Reihenfolge: mitgelieferte Laufzeit, start.local.conf, SQLFORMATTER_JAVA, JAVA_HOME, PATH.
+rem Jeder Kandidat wird mit call geprueft: eine .cmd-Datei wie der uebliche
+rem Ersatz fuer java.exe nimmt sonst die Kontrolle an, kehrt nicht zurueck, und
+rem start.bat endet nach der Pruefung wortlos. Genau so hat der Windows-Lauf
+rem den Eintrag aus der Konfiguration verschluckt.
 set "JAVA="
 set "QUELLE="
-if not defined JAVA if exist "%~dp0jre\bin\java.exe" "%~dp0jre\bin\java.exe" -version >nul 2>&1 && set "JAVA=%~dp0jre\bin\java.exe" && set "QUELLE=mitgeliefert"
-if not defined JAVA if defined CFG_JAVA if exist "%CFG_JAVA%" "%CFG_JAVA%" -version >nul 2>&1 && set "JAVA=%CFG_JAVA%" && set "QUELLE=start.local.conf"
-if not defined JAVA if defined SQLFORMATTER_JAVA if exist "%SQLFORMATTER_JAVA%" "%SQLFORMATTER_JAVA%" -version >nul 2>&1 && set "JAVA=%SQLFORMATTER_JAVA%" && set "QUELLE=SQLFORMATTER_JAVA"
-if not defined JAVA if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" "%JAVA_HOME%\bin\java.exe" -version >nul 2>&1 && set "JAVA=%JAVA_HOME%\bin\java.exe" && set "QUELLE=JAVA_HOME"
-if not defined JAVA for /f "delims=" %%j in ('where java 2^>nul') do if not defined JAVA "%%j" -version >nul 2>&1 && set "JAVA=%%j" && set "QUELLE=PATH"
+if not defined JAVA if exist "%~dp0jre\bin\java.exe" call "%~dp0jre\bin\java.exe" -version >nul 2>&1 && set "JAVA=%~dp0jre\bin\java.exe" && set "QUELLE=mitgeliefert"
+if not defined JAVA if defined CFG_JAVA if exist "%CFG_JAVA%" call "%CFG_JAVA%" -version >nul 2>&1 && set "JAVA=%CFG_JAVA%" && set "QUELLE=start.local.conf"
+if not defined JAVA if defined SQLFORMATTER_JAVA if exist "%SQLFORMATTER_JAVA%" call "%SQLFORMATTER_JAVA%" -version >nul 2>&1 && set "JAVA=%SQLFORMATTER_JAVA%" && set "QUELLE=SQLFORMATTER_JAVA"
+if not defined JAVA if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" call "%JAVA_HOME%\bin\java.exe" -version >nul 2>&1 && set "JAVA=%JAVA_HOME%\bin\java.exe" && set "QUELLE=JAVA_HOME"
+if not defined JAVA for /f "delims=" %%j in ('where java 2^>nul') do if not defined JAVA call "%%j" -version >nul 2>&1 && set "JAVA=%%j" && set "QUELLE=PATH"
 if not defined JAVA (
     echo Fehler: kein Java gefunden. Java 17 oder neuer installieren. 1>&2
     echo         Falls installiert: JAVA_HOME setzen oder Java in den PATH aufnehmen. 1>&2
