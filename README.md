@@ -5,7 +5,7 @@ und zurückschreibt. Gedacht für den Fall, in dem man ein SQL-Fragment aus eine
 Log, einem Chat oder der Datenbank-Konsole kopiert hat und es lesbar weitergeben
 oder ausführen will.
 
-- **Version:** 0.3
+- **Version:** 0.4
 - **Java:** 17 oder neuer
 - **Keine Laufzeit-Abhängigkeiten außer der JVM** — alle Bibliotheken sind ins Jar
   gepackt
@@ -17,6 +17,8 @@ Anleitung für sein System:**
   Doppelklick, Raycast-Hotkey
 - **[Anleitung für Windows](docs/anleitung-windows.md)** — `start.bat`,
   Tastenkürzel, Fehlermeldungen und was sie bedeuten
+- **[Was sich geändert hat](docs/aenderungen.md)** — die Änderungen je Version,
+  mit dem Grund dahinter
 
 Diese beiden Anleitungen richten sich an Nutzer ohne Programmierkenntnisse.
 Alles Weitere auf dieser Seite richtet sich an Menschen, die am Programm
@@ -199,7 +201,7 @@ in einem Fenster, das du nebenbei offen hältst.
 mvn clean verify
 ```
 
-Ergebnis: `target/SqlClipboardFormatter-0.3.jar` — ein ausführbares Jar mit allem
+Ergebnis: `target/SqlClipboardFormatter-0.4.jar` — ein ausführbares Jar mit allem
 drin.
 
 Einzelne Schritte:
@@ -214,7 +216,7 @@ Einzelne Schritte:
 Direkt starten ohne Skript:
 
 ```bash
-java -jar target/SqlClipboardFormatter-0.3.jar
+java -jar target/SqlClipboardFormatter-0.4.jar
 ```
 
 ### Maven ohne Internet
@@ -253,7 +255,7 @@ $ ./start.sh -Pruefen
 Java    : /usr/bin/java
 Konfig  : keine
 Maven   : mvn
-Jar     : target/SqlClipboardFormatter-0.3.jar (vorhanden)
+Jar     : target/SqlClipboardFormatter-0.4.jar (vorhanden)
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
@@ -275,7 +277,7 @@ prüfen lässt, ohne ein Fenster zu öffnen:
 Java    : C:\...\jre\bin\java.exe  (mitgeliefert)
 Konfig  : keine
 Maven   : mvn
-Jar     : target\SqlClipboardFormatter-0.3.jar - vorhanden
+Jar     : target\SqlClipboardFormatter-0.4.jar - vorhanden
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
@@ -326,11 +328,11 @@ Liegt im selben Ordner ein `jre/`, nimmt `start.bat` dessen Java. Es muss weder 
 noch Maven installiert sein:
 
 ```
-sqlClipboardFormatter-0.3-windows-x64/
+sqlClipboardFormatter-0.4-windows-x64/
   start.bat
   start.conf.example        ← Vorlage für start.local.conf
   jre/bin/java.exe          ← wird zuerst genommen
-  target/SqlClipboardFormatter-0.3.jar
+  target/SqlClipboardFormatter-0.4.jar
   README.md
   docs/anleitung-windows.md
 ```
@@ -427,7 +429,7 @@ src/main/java/signaliduna/
   SqlTextSpans.java                 Zerlegt Text in Literale, Bezeichner, Kommentare
 src/main/resources/
   version.properties                Erzeugt aus der pom.xml
-src/test/java/signaliduna/          252 Tests
+src/test/java/signaliduna/          255 Tests
 ```
 
 Die Trennung ist Absicht: `SqlPrettyFormatter`, `SqlFormatService`,
@@ -467,7 +469,7 @@ Skripten. Beide wären beim Wechsel stillschweigend falsch geworden.
 ### Die Versionszeile
 
 ```
-Version 0.3 vom 27.09.2026
+Version 0.4 vom 27.09.2026
 ```
 
 Das Datum ist das **Build**-Datum aus dem Manifest, nicht das Datum des Releases.
@@ -490,11 +492,11 @@ mvn test                       # alle
 mvn test -Dtest=SqlPrettyFormatterTest   # eine Klasse
 ```
 
-**252 Tests**, verteilt auf:
+**255 Tests**, verteilt auf:
 
 | Klasse                   | Tests | Wofür                                                           |
 | ------------------------ | ----- | --------------------------------------------------------------- |
-| `FormatterPanelTest`     | 97    | Layout, Themes, Zeilennummern, Toasts, Freischaltung, Reentranz   |
+| `FormatterPanelTest`     | 100   | Layout, Themes, Zeilennummern, Toasts, Freischaltung, Reentranz   |
 | `SqlPrettyFormatterTest` | 47    | Formatierregeln, Operatorerhalt, Zeilenenden                    |
 | `SqlFormatServiceTest`   | 44    | Normalisierung, Literal- und Bezeichnerschutz                   |
 | `SqlDetectorTest`        | 33    | SQL-Erkennung, parametrisiert über Start- und Nicht-Startwörter |
@@ -506,7 +508,7 @@ Zum Nachzählen, weil die Zahl sonst leicht danebenliegt: `mvn test` meldet für
 sondern eine Eigenheit von `@Nested` — die Zähler sitzen in den inneren Klassen.
 Wer nachzählen will, zählt die `<testcase>`-Elemente in
 `target/surefire-reports/TEST-*.xml` oder liest die Summe aus der
-Maven-Ausgabe (251).
+Maven-Ausgabe (255).
 
 `StartSkriptTest` führt `start.sh` wirklich aus — deshalb findet man dort Regressionen,
 die man beim Lesen übersieht. Sechs Beispiele aus der Praxis:

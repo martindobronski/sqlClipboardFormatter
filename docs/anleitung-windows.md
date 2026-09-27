@@ -102,7 +102,7 @@ Bei einem frisch entpackten ZIP sieht das so aus:
 Java    : C:\...\jre\bin\java.exe  (mitgeliefert)
 Konfig  : keine
 Maven   : nicht gefunden
-Jar     : target\SqlClipboardFormatter-0.3.jar - vorhanden
+Jar     : target\SqlClipboardFormatter-0.4.jar - vorhanden
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
@@ -229,7 +229,7 @@ Sie sehen dann zum Beispiel:
 Java    : C:\Program Files\Java\jdk-17\bin\java.exe
 Konfig  : keine
 Maven   : mvn
-Jar     : target\SqlClipboardFormatter-0.3.jar - fehlt
+Jar     : target\SqlClipboardFormatter-0.4.jar - fehlt
 Bauen   : ja
 Argumente: 0 an die JVM
 ```
@@ -436,7 +436,7 @@ Skript ausgibt:
 | `Fehler: kein Java gefunden. Java 17 oder neuer installieren.`                | Java fehlt oder ist zu alt — Schritt 3                                                                      |
 | `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Im entpackten ZIP fehlt das fertige Programm — etwa weil der Ordner `target/` gelöscht wurde. Im Quelltext: Maven fehlt, obwohl noch nicht übersetzt wurde |
 | `Fehler: der Build ist fehlgeschlagen.`                                       | Beim Übersetzen ging etwas schief — die ausführliche Meldung steht darüber                                  |
-| `Fehler: "target\SqlClipboardFormatter-0.3.jar" fehlt trotz Bauvorgang.`      | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
+| `Fehler: "target\SqlClipboardFormatter-0.4.jar" fehlt trotz Bauvorgang.`      | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
 
 ### „Java wurde nicht gefunden", obwohl Java installiert ist
 

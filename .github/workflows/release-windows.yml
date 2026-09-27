@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag, unter dem veroeffentlicht wird (z.B. v0.3)"
+        description: "Tag, unter dem veroeffentlicht wird (z.B. v0.4)"
         required: true
       veroeffentlichen:
         description: "false = nur bauen und pruefen, nichts veroeffentlichen"
@@ -124,6 +124,7 @@ jobs:
           # unter einem anderen Pfad zu finden als dokumentiert, und ihre
           # Bildverweise gingen ins Leere.
           Copy-Item docs\anleitung-windows.md (Join-Path $ziel "docs")
+          Copy-Item docs\aenderungen.md (Join-Path $ziel "docs")
           Copy-Item docs\bild-hell.png (Join-Path $ziel "docs")
           Copy-Item docs\bild-dunkel.png (Join-Path $ziel "docs")
 
@@ -245,7 +246,8 @@ jobs:
             foreach ($pflicht in @("start.bat", "start.conf.example", "README.md",
                                    "jre/bin/java.exe",
                                    "target/SqlClipboardFormatter-$version.jar",
-                                   "docs/anleitung-windows.md")) {
+                                   "docs/anleitung-windows.md",
+                                   "docs/aenderungen.md")) {
               if (-not ($namen -contains "$name/$pflicht")) {
                 throw "ZIP fehlt: $pflicht"
               }
@@ -303,6 +305,9 @@ jobs:
 
           **Voraussetzungen:** Windows x64. Fuer macOS und Linux gibt es kein
           ZIP, dort laeuft start.sh aus dem Repository.
+
+          **Was sich geaendert hat:** ``docs/aenderungen.md`` im Archiv, mit dem
+          Grund hinter jeder Aenderung.
           "@
           gh release view $env:RELEASE_TAG --json tagName --jq .tagName 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {

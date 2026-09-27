@@ -343,7 +343,7 @@ Java durchgereicht werden:
 Java    : /usr/bin/java
 Konfig  : keine
 Maven   : mvn
-Jar     : target/SqlClipboardFormatter-0.3.jar (vorhanden)
+Jar     : target/SqlClipboardFormatter-0.4.jar (vorhanden)
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
