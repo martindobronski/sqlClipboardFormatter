@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag, unter dem veroeffentlicht wird (z.B. v0.2)"
+        description: "Tag, unter dem veroeffentlicht wird (z.B. v0.3)"
         required: true
       veroeffentlichen:
         description: "false = nur bauen und pruefen, nichts veroeffentlichen"
@@ -113,6 +113,9 @@ jobs:
           New-Item -ItemType Directory -Path (Join-Path $ziel "docs") | Out-Null
 
           Copy-Item start.bat $ziel
+          # Die Vorlage gehoert ins ZIP: start.bat liest eine start.local.conf,
+          # und im entpackten ZIP waere sie sonst nur ueber die Doku auffindbar.
+          Copy-Item start.conf.example $ziel
           Copy-Item -Recurse jre $ziel
           Copy-Item $jar.FullName (Join-Path $ziel "target")
           Copy-Item README.md $ziel
@@ -239,7 +242,8 @@ jobs:
             if ($wurzel.Count -ne 1 -or $wurzel[0] -ne $name) {
               throw "ZIP enthaelt unerwartete Wurzelordner: $($wurzel -join ', ')"
             }
-            foreach ($pflicht in @("start.bat", "README.md", "jre/bin/java.exe",
+            foreach ($pflicht in @("start.bat", "start.conf.example", "README.md",
+                                   "jre/bin/java.exe",
                                    "target/SqlClipboardFormatter-$version.jar",
                                    "docs/anleitung-windows.md")) {
               if (-not ($namen -contains "$name/$pflicht")) {
@@ -291,6 +295,11 @@ jobs:
           Wer die Laufzeit nicht mitfuehren will, installiert Java selbst und
           laesst den Ordner ``jre/`` weg; start.bat nimmt dann JAVA_HOME oder
           den PATH.
+
+          **Feste Pfade:** wer ein bestimmtes Java, Maven oder JDK fuer den
+          Bau will, kopiert ``start.conf.example`` nach ``start.local.conf`` und
+          traegt dort ``java``, ``maven`` oder ``maven-jdk`` ein. Die Datei wird
+          nicht mitgeliefert, sie gehoert einem Rechner, nicht dem Programm.
 
           **Voraussetzungen:** Windows x64. Fuer macOS und Linux gibt es kein
           ZIP, dort laeuft start.sh aus dem Repository.

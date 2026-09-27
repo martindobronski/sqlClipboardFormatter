@@ -18,6 +18,10 @@ on:
       - "src/**"
       - "start.bat"
       - "start.sh"
+      # Die Vorlage wird von der Testsuite gelesen (StartSkriptTest) und von
+      # start.bat zur Laufzeit ausgewertet. Ohne sie hier waere eine Aenderung
+      # an ihr unbemerzt durchgegangen.
+      - "start.conf.example"
       - "pom.xml"
       - ".gitattributes"
       - ".gitignore"
@@ -91,6 +95,7 @@ jobs:
           New-Item -ItemType Directory -Path (Join-Path $ziel "target") | Out-Null
 
           Copy-Item start.bat $ziel
+          Copy-Item start.conf.example $ziel
           Copy-Item -Recurse jre $ziel
           Copy-Item target\SqlClipboardFormatter-*.jar (Join-Path $ziel "target")
           Copy-Item README.md $ziel
@@ -287,11 +292,27 @@ jobs:
           # gewinnt damit immer das Array der vier uebrigen, und der Schritt
           # waere bei korrekter Ausgabe fehlgeschlagen.
           $text = ($ausgabe | Out-String)
-          foreach ($pflicht in @("Java    :", "Maven   :", "Jar     :", "Bauen   :", "Argumente:")) {
+          foreach ($pflicht in @("Java    :", "Konfig  :", "Maven   :", "Jar     :",
+                                  "Bauen   :", "Argumente:")) {
             if (-not $text.Contains($pflicht)) {
               throw "In der Ausgabe fehlt die Zeile: $pflicht"
             }
           }
+
+          # Die Zeile "Jar     :" nennt den Namen, den start.bat aus der pom.xml
+          # gelesen hat. Bisher wurde nur geprueft, dass die Zeile ueberhaupt
+          # dasteht - ein falscher Name faellt erst beim Start auf, als
+          # "unable to access jarfile". Genau da ist ein Fehler teuer, also
+          # wird der Name hier gegen die pom.xml gehalten. Der Ausdruck in
+          # start.bat greift auf dieselbe Gruppe zu (.Groups[1]); ein Versatz
+          # darin faellt hier auf.
+          $version = ([regex]::Match((Get-Content -Raw pom.xml), '<version>([^<]+)</version>')).Groups[1].Value
+          if (-not $version) { throw "die Version liess sich nicht aus der pom.xml" }
+          $erwartet = "SqlClipboardFormatter-$version.jar"
+          if (-not $text.Contains($erwartet)) {
+            throw "start.bat nennt nicht das Jar der pom.xml: erwartet $erwartet"
+          }
+          Write-Host "Jar-Name stimmt mit der pom.xml ueberein: $erwartet"
           Write-Host "start.bat -Pruefen hat alle Zeilen geliefert."
 
       - name: start.bat startet die App wirklich
@@ -334,6 +355,147 @@ jobs:
           $jvm | Stop-Process -Force
           if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
           Write-Host "Beendet. start.bat startet die App auf Windows."
+
+      - name: start.local.conf wird gelesen
+        shell: pwsh
+        # Die StartSkriptTest koennen das nur fuer start.sh ausfuehren. Fuer
+        # start.bat braucht es diesen Schritt, sonst waere die Konfiguration
+        # auf Windows ungetestet - und die Datei ist genau fuer Windows da.
+        #
+        # Zwei Faelle, weil beide etwas Unterschiedliches beweisen. Der erste
+        # ist ein brauchbarer Pfad mit Leerzeichen: damit zeigt sich, dass der
+        # Parser nicht am ersten Leerzeichen abschneidet. Der zweite ist ein
+        # toter Pfad: damit zeigt sich, dass ein falscher Eintrag den Start
+        # nicht verhindert, sondern auf JAVA_HOME zurueckfaellt. Ein stilles
+        # Scheitern waere das Schlimmste - die Datei waere da, der Eintrag
+        # nicht, und niemand saehe es.
+        run: |
+          # Einen brauchbaren java-Ersatz unter einem Namen mit Leerzeichen
+          # legen. Eine .cmd-Datei statt einer Kopie der JVM: die braucht nicht
+          # die ganze Laufzeit und verhaelt sich fuer -version genau wie java.
+          $shim = Join-Path $env:RUNNER_TEMP "mit leerzeichen"
+          New-Item -ItemType Directory -Path $shim -Force | Out-Null
+          $javaCmd = Join-Path $shim "java.cmd"
+          @(
+            "@echo off"
+            "`"$env:JAVA_HOME\bin\java.exe`" %*"
+          ) | Set-Content -Path $javaCmd -Encoding ascii
+          Write-Host "Shim: $javaCmd"
+
+          $conf = "start.local.conf"
+
+          @(
+            "# Kommentar mit java= darf nichts bewirken"
+            ""
+            "   java   =   $javaCmd   "
+            "MAVEN=/gibt es nicht/mvn.cmd"
+          ) | Set-Content -Path $conf -Encoding ascii
+
+          $ausgabe = cmd /c "start.bat -Pruefen" 2>&1
+          $text = ($ausgabe | Out-String)
+          Write-Host "=== Fall 1: brauchbarer Pfad mit Leerzeichen ==="
+          Write-Host $text
+
+          if (-not $text.Contains("Konfig  :")) {
+            throw "start.bat meldet die Konfiguration nicht"
+          }
+          if (-not $text.Contains("(start.local.conf)")) {
+            throw "der Eintrag wurde nicht uebernommen: $text"
+          }
+          if ($text -notmatch "mit leerzeichen") {
+            throw "der Pfad kam abgeschnitten an - Leerzeichen im Wert gehen nicht"
+          }
+          Write-Host "start.bat hat den Pfad mit Leerzeichen uebernommen."
+
+          @(
+            "java=/gibt es nicht/java"
+            "maven=/gibt es nicht/mvn.cmd"
+          ) | Set-Content -Path $conf -Encoding ascii
+
+          $ausgabe2 = cmd /c "start.bat -Pruefen" 2>&1
+          $text2 = ($ausgabe2 | Out-String)
+          Write-Host "=== Fall 2: toter Pfad ==="
+          Write-Host $text2
+
+          if ($text2.Contains("(start.local.conf)")) {
+            throw "ein toter Pfad wurde als benutzt gemeldet: $text2"
+          }
+          if (-not ($text2 -match "Java\s+:.*\(JAVA_HOME\)")) {
+            throw "start.bat ist nicht auf JAVA_HOME zurueckgefallen: $text2"
+          }
+          Write-Host "start.bat faellt auf JAVA_HOME zurueck. Beide Faelle in Ordnung."
+
+          Remove-Item $conf -Force
+          Remove-Item $shim -Recurse -Force
+
+      - name: start.bat baut ohne fertiges Jar
+        shell: pwsh
+        # Die Luecke, durch die beide Aenderungen aus dem Commit "an Windows
+        # Umgebung angepasst" gekrochen sind: start.bat wurde auf diesem
+        # Runner nie zum Bauen gebracht, weil das Jar aus dem Testlauf vorher
+        # schon da war. "Bauen ..." kam im ganzen Protokoll nicht vor, und der
+        # Build-Pfad - genauer die Zeile, die JAVA_HOME auf einen festen Pfad
+        # gesetzt hat - lief nie. Ein fest eingetragener Pfad in genau diesem
+        # Block hat auf einem Rechner ohne dieses JDK den Build zerstoert,
+        # ohne dass ein Test es bemerkt haette.
+        run: |
+          $vorher = @(Get-ChildItem target\SqlClipboardFormatter-*.jar -ErrorAction SilentlyContinue)
+          Write-Host "JAR vorher vorhanden: $($vorher.Count)"
+          $vorher | Remove-Item -Force
+          $beginn = Get-Date
+
+          $log = Join-Path $env:RUNNER_TEMP "bauen.log"
+          $prozess = Start-Process -FilePath "cmd.exe" `
+              -ArgumentList "/c", "start.bat -Neu" `
+              -PassThru -NoNewWindow `
+              -RedirectStandardOutput $log `
+              -RedirectStandardError "$log.err"
+          Write-Host "start.bat -Neu gestartet: $($prozess.Id)"
+
+          # Nicht auf "irgendein java.exe" warten: Maven startet fuer den Build
+          # selbst eine, aus demselben JAVA_HOME wie die App danach. Nach ein
+          # paar Sekunden laeuft also die Maven-JVM, die Schleife bricht, und
+          # das Jar ist noch gar nicht gebaut - der Schritt waere an der
+          # falschen Stelle rot geworden. Gesucht wird deshalb die JVM, deren
+          # Aufrufzeile das Jar nennt; das kann nur die App sein.
+          $app = $null
+          for ($i = 0; $i -lt 150; $i++) {
+            Start-Sleep -Seconds 2
+            $app = @(Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" -ErrorAction SilentlyContinue |
+                     Where-Object { $_.CommandLine -like "*SqlClipboardFormatter-*.jar*" })
+            if ($app.Count -gt 0) { break }
+            if ($prozess.HasExited) {
+              Write-Host "start.bat endete vorzeitig mit $($prozess.ExitCode)"
+              break
+            }
+          }
+
+          Write-Host "--- bauen.log ---"
+          if (Test-Path $log) { Get-Content $log }
+          Write-Host "--- bauen.log.err ---"
+          if (Test-Path "$log.err") { Get-Content "$log.err" }
+
+          $roh = Get-Content $log -Raw
+          if ($roh -notmatch "Bauen \.\.\.") {
+            throw "start.bat hat nicht gebaut - der Build-Pfad laeuft nie"
+          }
+          $jetzt = @(Get-ChildItem target\SqlClipboardFormatter-*.jar -ErrorAction SilentlyContinue)
+          if ($jetzt.Count -eq 0) {
+            throw "start.bat meldete 'Bauen ...', hat aber kein Jar erzeugt"
+          }
+          # Ein Jar, das schon vorher da war und nur die Uhrzeit behalten hat,
+          # waere von einem frischen Build nicht zu unterscheiden. Das Alter ist
+          # das einzige, was die beiden Zustaende wirklich trennt.
+          if ($jetzt[0].LastWriteTime -le $beginn) {
+            throw "das Jar ist nicht neu: $($jetzt[0].LastWriteTime) ist vor dem Lauf entstanden"
+          }
+          if ($app.Count -eq 0) {
+            throw "die App startet nicht im frisch gebauten Zustand"
+          }
+          $app | ForEach-Object { Write-Host "  JVM: $($_.ProcessId) $($_.CommandLine)" }
+          $app | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
+          Write-Host "Beendet. start.bat baut aus dem Quelltext und startet die App."
 
       - name: Kurzfassung als Protokoll
         if: always()
