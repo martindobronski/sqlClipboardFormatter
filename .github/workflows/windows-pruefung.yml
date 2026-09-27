@@ -356,54 +356,6 @@ jobs:
           if (-not $prozess.HasExited) { $prozess | Stop-Process -Force }
           Write-Host "Beendet. start.bat startet die App auf Windows."
 
-      - name: "start.bat - Konfiguration nachgestellt"
-        shell: pwsh
-        # Derselbe Leseweg wie in start.bat, aber in eigenen Dateien und in
-        # Stufen: loesungsfaehig, dann halb so lang, dann ganz kurz. Der Weg
-        # laesst sich nur auf Windows pruefen, und ein Fehler darin ist sonst
-        # unsichtbar - die Datei wird gemeldet, der Eintrag nicht.
-        run: |
-          $conf = "start.local.conf"
-          @(
-            "   java   =   $env:RUNNER_TEMP\mit leerzeichen\java.cmd   "
-          ) | Set-Content -Path $conf -Encoding ascii
-
-          $voll = "try { foreach (`$z in [System.IO.File]::ReadAllLines(`$env:SQLFORMATTER_CONF)) { `$t = `$z.TrimStart(); if (`$t -and -not `$t.StartsWith('#') -and `$t.Contains('=')) { `$p = `$t -split '=', 2; if (`$p[1].Trim()) { `$k = (`$p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Output (`$k + '=' + `$p[1].Trim()) } } } } catch { }"
-          $ohne = "try { foreach (`$z in [System.IO.File]::ReadAllLines(`$env:SQLFORMATTER_CONF)) { `$t = `$z.TrimStart(); if (`$t.Contains('=')) { Write-Output (`$t + '=') } } } catch { }"
-          $kurz = "[System.IO.File]::ReadAllLines(`$env:SQLFORMATTER_CONF).Count"
-
-          $stufen = @(
-            @{ n = "P1 kurz, ohne Umleitung"; c = $kurz; r = "" },
-            @{ n = "P2 kurz, mit Umleitung"; c = $kurz; r = " 2^>nul" },
-            @{ n = "P3 halb, ohne Umleitung"; c = $ohne; r = "" },
-            @{ n = "P4 halb, mit Umleitung"; c = $ohne; r = " 2^>nul" },
-            @{ n = "P5 voll, ohne Umleitung"; c = $voll; r = "" },
-            @{ n = "P6 voll, mit Umleitung"; c = $voll; r = " 2^>nul" }
-          )
-
-          $i = 0
-          foreach ($stufe in $stufen) {
-            $i++
-            $datei = "probe$i.bat"
-            $umleitung = $stufe.r -replace "\^", "^^"
-            @(
-              "@echo off"
-              "set `"SQLFORMATTER_CONF=%CD%\start.local.conf`""
-              "for /f `"usebackq tokens=1,* delims==`" %%a in (``powershell -NoProfile -Command `"$($stufe.c)`"$umleitung``) do ("
-              "  echo [$($stufe.n)] %%a=%%b"
-              ")"
-              "echo [$($stufe.n)] fertig"
-              "goto :eof"
-            ) | Set-Content -Path $datei -Encoding ascii
-          }
-
-          for ($i = 1; $i -le $stufen.Count; $i++) {
-            Write-Host "=== probe$i.bat : $($stufen[$i - 1].n) ==="
-            cmd /c "probe$i.bat" 2>&1 | ForEach-Object { Write-Host "  $_" }
-            Remove-Item "probe$i.bat" -Force
-          }
-          Remove-Item $conf -Force
-
       - name: start.local.conf wird gelesen
         shell: pwsh
         # Die StartSkriptTest koennen das nur fuer start.sh ausfuehren. Fuer
