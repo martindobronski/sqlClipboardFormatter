@@ -85,11 +85,18 @@ rem Batch laesst sich dazu nicht fehlerfrei zitieren.
 rem
 rem Eine kaputte Zeile wird uebersprungen, nie zum Abbruch: aus einem
 rem Tippfehler darf kein "das Programm startet nicht mehr" werden.
+rem
+rem Ausgabe ist Write-Output, nicht Write-Host: Batch liest hier aus einer
+rem Pipe, und nur der Erfolgsstrom landet darin. Write-Host schreibt an den
+rem Host und kommt in der Pipe nicht an - die Datei waere dann da, der
+rem Eintrag stillschweigend nicht, und start.bat stuende ohne Hinweis auf
+rem JAVA_HOME zurueck. Genau das hat der Windows-Lauf gezeigt: die Datei
+rem wurde gemeldet, der Eintrag nie verwendet.
 set "SQLFORMATTER_CONF=%~dp0start.local.conf"
 set "CFG_JAVA="
 set "CFG_MAVEN="
 set "CFG_MAVENJDK="
-if exist "%SQLFORMATTER_CONF%" for /f "usebackq tokens=1,* delims==" %%k in (`powershell -NoProfile -Command "foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Host ($k + '=' + $p[1].Trim()) } } }" 2^>nul`) do (
+if exist "%SQLFORMATTER_CONF%" for /f "usebackq tokens=1,* delims==" %%k in (`powershell -NoProfile -Command "foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Output ($k + '=' + $p[1].Trim()) } } }" 2^>nul`) do (
     if /i "%%k"=="JAVA" set "CFG_JAVA=%%z"
     if /i "%%k"=="MAVEN" set "CFG_MAVEN=%%z"
     if /i "%%k"=="MAVEN-JDK" set "CFG_MAVENJDK=%%z"
@@ -137,6 +144,11 @@ rem Die Quelle mit anzeigen: "Java: \pfad\zum\java" allein laesst offen, ob
 rem das nun das mitgelieferte ist oder ein irgendwo installiertes.
 echo Java    : %JAVA%  (%QUELLE%)
 if exist "%SQLFORMATTER_CONF%" (echo Konfig  : %SQLFORMATTER_CONF%) else (echo Konfig  : keine)
+rem Was aus der Datei wirklich gelesen wurde. Ohne diese Zeilen ist ein
+rem nicht uebernommener Eintrag nicht von einem leeren zu unterscheiden.
+if defined CFG_JAVA echo Gelesen : Java=%CFG_JAVA%
+if defined CFG_MAVEN echo Gelesen : Maven=%CFG_MAVEN%
+if defined CFG_MAVENJDK echo Gelesen : Maven-Jdk=%CFG_MAVENJDK%
 if defined MVN (echo Maven   : %MVN%) else (echo Maven   : nicht gefunden)
 if exist "%JAR%" (echo Jar     : %JAR% - vorhanden) else (echo Jar     : %JAR% - fehlt)
 if defined BAUEN (echo Bauen   : ja) else (echo Bauen   : falls Quellen neuer)
