@@ -94,16 +94,7 @@ set "SQLFORMATTER_CONF=%~dp0start.local.conf"
 set "CFG_JAVA="
 set "CFG_MAVEN="
 set "CFG_MAVENJDK="
-rem Schluessel und Wert: bei tokens=1,* steht der Rest in der Variablen
-rem direkt hinter der letzten. Ein Kommentar mit Prozentzeichen davor
-rem laesst cmd die Klammer am Ende des Blocks verschlucken - danach gibt
-rem das Skript gar nichts mehr aus, auch keine Fehlermeldung. Deshalb
-rem steht hier kein Prozentzeichen, und im Rumpf ueberhaupt kein Text.
-rem Ohne Umleitung nach nul: cmd meldet fuer 2^>nul im Rueckwaertsanfuehrungs-
-rem strich "war unerwartet an dieser Stelle" und liest die Zeile nicht ein.
-rem Stattdessen faengt die PowerShell-Zeile ihre eigenen Fehler ab, bleibt also
-rem still - und im Fehlerfall sieht man an der leeren Ausgabe, dass es sie gab.
-if exist "%SQLFORMATTER_CONF%" for /f "usebackq tokens=1,* delims==" %%a in (`powershell -NoProfile -Command "try { foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Output ($k + '=' + $p[1].Trim()) } } } } catch { }"`) do (
+for /f "usebackq tokens=1,* delims==" %%a in (`powershell -NoProfile -Command "try { foreach ($z in [System.IO.File]::ReadAllLines($env:SQLFORMATTER_CONF)) { $t = $z.TrimStart(); if ($t -and -not $t.StartsWith('#') -and $t.Contains('=')) { $p = $t -split '=', 2; if ($p[1].Trim()) { $k = ($p[0] -replace '[^A-Za-z0-9-]', '').ToUpper(); Write-Output ($k + '=' + $p[1].Trim()) } } } } catch { }"`) do (
     if /i "%%a"=="JAVA" set "CFG_JAVA=%%b"
     if /i "%%a"=="MAVEN" set "CFG_MAVEN=%%b"
     if /i "%%a"=="MAVEN-JDK" set "CFG_MAVENJDK=%%b"
