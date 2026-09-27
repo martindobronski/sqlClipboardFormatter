@@ -5,7 +5,7 @@ und zurückschreibt. Gedacht für den Fall, in dem man ein SQL-Fragment aus eine
 Log, einem Chat oder der Datenbank-Konsole kopiert hat und es lesbar weitergeben
 oder ausführen will.
 
-- **Version:** 0.2
+- **Version:** 0.3
 - **Java:** 17 oder neuer
 - **Keine Laufzeit-Abhängigkeiten außer der JVM** — alle Bibliotheken sind ins Jar
   gepackt
@@ -68,8 +68,26 @@ wenn das Jar noch nicht gebaut ist.
 | **SQL Formatieren**              | Formatiert den Text im Feld. Nur aktiv, wenn er nach SQL aussieht.                                       |
 | **Ins Clipboard schreiben**      | Schreibt den Text aus dem Feld zurück. Nur aktiv, wenn er nach SQL aussieht.                             |
 | **Dialect**                      | Legt fest, wie der Text interpretiert wird.                                                              |
-| **Theme-Schalter** (oben rechts) | Wechselt zwischen dunkel und hell. Das Theme wird nicht gespeichert, die Anwendung startet immer dunkel. |
+| **Theme-Schalter** (oben rechts) | Wechselt zwischen dunkel und hell. Das Theme wird nicht gespeichert, die Anwendung startet immer hell. |
 | **Beenden**                      | Schliesst das Fenster.                                                                                   |
+
+### Zeilennummern zaehlen, was man sieht
+
+Das Textfeld ist 84 Zeichen breit und bricht laengere Zeilen weich um. Die Zahlen
+links zaehlen deshalb die **Bildschirmzeilen**, nicht die Absaetze: eine lange
+Zeile, die auf zwei Bildschirmzeilen umbricht, bekommt zwei Zahlen. Beim
+Blaettern passt damit jede Zahl zu der Zeile, die daneben steht — und die
+Statuszeile rechts nennt dieselbe Zahl als "Zeilen".
+
+Gezeichnet werden die Zahlen vom Textfeld selbst, in seinem linken Innenabstand
+und im selben Zug wie der Text. Eine eigene Spalte daneben haette ihren eigenen
+Blick auf den Umbruch gehabt: Sie zaehlte Absaetze, stand bei jeder Aenderung
+einen Moment zu spaet und lief beim Blaettern auseinander.
+
+Der Grund ist nicht die Schoenheit, sondern die Erreichbarkeit: Der Textbereich
+waechst mit den Bildschirmzeilen, die der Text wirklich belegt. Zaehlt man
+Absaetze, schneidet man eine umgebrochene Zeile ab, und ihr unterer Teil ist
+weder zu sehen noch zu erreichen.
 
 Statusmeldungen unten links verschwinden nach vier Sekunden von selbst. Warnungen
 und Fehler bleiben stehen — eine Meldung über möglichen Datenverlust darf nicht
@@ -181,7 +199,7 @@ in einem Fenster, das du nebenbei offen hältst.
 mvn clean verify
 ```
 
-Ergebnis: `target/SqlClipboardFormatter-0.2.jar` — ein ausführbares Jar mit allem
+Ergebnis: `target/SqlClipboardFormatter-0.3.jar` — ein ausführbares Jar mit allem
 drin.
 
 Einzelne Schritte:
@@ -196,7 +214,7 @@ Einzelne Schritte:
 Direkt starten ohne Skript:
 
 ```bash
-java -jar target/SqlClipboardFormatter-0.2.jar
+java -jar target/SqlClipboardFormatter-0.3.jar
 ```
 
 ### Maven ohne Internet
@@ -233,8 +251,9 @@ startet es sofort.
 ```
 $ ./start.sh -Pruefen
 Java    : /usr/bin/java
+Konfig  : keine
 Maven   : mvn
-Jar     : target/SqlClipboardFormatter-0.2.jar (vorhanden)
+Jar     : target/SqlClipboardFormatter-0.3.jar (vorhanden)
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
@@ -254,8 +273,9 @@ prüfen lässt, ohne ein Fenster zu öffnen:
 ```bat
 > start.bat -Pruefen
 Java    : C:\...\jre\bin\java.exe  (mitgeliefert)
+Konfig  : keine
 Maven   : mvn
-Jar     : target\SqlClipboardFormatter-0.2.jar - vorhanden
+Jar     : target\SqlClipboardFormatter-0.3.jar - vorhanden
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
@@ -264,31 +284,70 @@ Der Klammerzusatz nennt, **woher** das Java stammt. `Java : C:\...\java.exe` all
 lässt offen, ob das nun das mitgelieferte ist oder ein irgendwo installiertes — und
 das ist genau die Frage, die man stellt, wenn etwas nicht startet.
 
+### Feste Pfade: `start.local.conf`
+
+Wer ein bestimmtes Java, ein bestimmtes Maven oder ein eigenes JDK für den Bau
+durchsetzen will, schreibt es in eine Datei namens `start.local.conf` neben
+`start.sh` bzw. `start.bat`. Sie wird **nicht** mitversioniert — die Pfade eines
+Rechners gehören nicht in die Historie. Die Vorlage `start.conf.example` ist
+eingecheckt und liegt dem Windows-ZIP bei:
+
+```sh
+cp start.conf.example start.local.conf
+```
+
+```
+java=/usr/local/opt/openjdk/bin/java
+maven=/usr/local/bin/mvn
+maven-jdk=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
+```
+
+| Schlüssel   | Wofür                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------- |
+| `java`      | die `java` (Windows: `java.exe`), mit der die App startet                              |
+| `maven`     | die `mvn.cmd` bzw. `mvn`, mit der gebaut wird                                          |
+| `maven-jdk` | das JDK, mit dem Maven übersetzt; leer lassen heißt `JAVA_HOME` bleibt unangetastet     |
+
+Nach `#` ist alles Kommentar; Leerzeichen um den Wert sind erlaubt, Anführungszeichen
+sind **nicht** nötig — `C:\Program Files\...` ist einfach eintragbar. Eine kaputte
+Zeile wird übersprungen, nie zum Abbruch: aus einem Tippfehler darf kein „das Programm
+startet nicht mehr" werden. Steht ein Pfad in der Datei, der nicht existiert, fällt
+das Skript auf die normale Suche zurück — `Konfig  :` steht nur dann da, wenn der
+Eintrag wirklich benutzt wurde, `(start.local.conf)` nur dann, wenn sein Java auch
+läuft.
+
+Der Unterschied zu `SQLFORMATTER_JAVA` ist die Dauer: die Variable gilt nur in dem
+Fenster, in dem sie gesetzt ist, die Datei gilt für jeden Start in diesem Ordner.
+Beide werden gelesen — siehe die Suchreihenfolge unten.
+
 ### Die mitgelieferte Laufzeit
 
 Liegt im selben Ordner ein `jre/`, nimmt `start.bat` dessen Java. Es muss weder Java
 noch Maven installiert sein:
 
 ```
-sqlClipboardFormatter-0.2-windows-x64/
+sqlClipboardFormatter-0.3-windows-x64/
   start.bat
+  start.conf.example        ← Vorlage für start.local.conf
   jre/bin/java.exe          ← wird zuerst genommen
-  target/SqlClipboardFormatter-0.2.jar
+  target/SqlClipboardFormatter-0.3.jar
   README.md
   docs/anleitung-windows.md
 ```
 
-Die Reihenfolge der Suche ist: `jre/`, dann die Variable `SQLFORMATTER_JAVA`, dann
-`JAVA_HOME`, dann der `PATH`. Jeder Zweig prüft sein Java mit `java -version` — ein
-halb entpackter Download darf den Start nicht verhindern, obwohl ein zweites Java
-installiert ist. Die mitgelieferte Laufzeit gewinnt, weil sie die einzige ist, von der
-wir wissen, dass sie zum Jar passt.
+Die Reihenfolge der Suche ist: `jre/`, dann `start.local.conf`, dann die Variable
+`SQLFORMATTER_JAVA`, dann `JAVA_HOME`, dann der `PATH`. Jeder Zweig prüft sein Java mit
+`java -version` — ein halb entpackter Download darf den Start nicht verhindern, obwohl
+ein zweites Java installiert ist. Die mitgelieferte Laufzeit gewinnt, weil sie die
+einzige ist, von der wir wissen, dass sie zum Jar passt. Sie gewinnt auch gegen einen
+Eintrag in `start.local.conf`: im entpackten Release soll die mitgelieferte Laufzeit
+benutzt werden und nicht die eines Rechners, auf dem das ZIP nur herumliegt.
 
 Wer die 56 MB nicht mitnehmen will, lässt den Ordner `jre/` weg und installiert Java
-selbst; `start.bat` nimmt dann `JAVA_HOME` oder den `PATH`.
+selbst; `start.bat` nimmt dann den Eintrag aus `start.local.conf`, `JAVA_HOME` oder den
+`PATH`.
 
-Zum Erzwingen einer bestimmten Laufzeit, etwa eines JDKs, das auf keinem Fall benutzt
-werden soll:
+Zum Erzwingen einer bestimmten Laufzeit **nur für dieses Fenster**:
 
 ```bat
 set SQLFORMATTER_JAVA=C:\Java\jdk-17\bin\java.exe
@@ -317,6 +376,10 @@ keiner ist.
   dafür nicht `which java` benutzt, sondern das Ergebnis von `java -version`
   geprüft — sonst trifft man das macOS-Stub unter `/usr/bin/java`, das nur
   „Java ist nicht installiert" ausgibt.
+- **Ein toter Eintrag in `start.local.conf` verhindert den Start nicht.** Jeder
+  Pfad wird mit `-version` geprüft, bevor er genommen wird; danach geht es die
+  Kette weiter. Eine Datei, die falsch ist, kostet einen Blick in den Prüfmodus —
+  nicht die Funktionsfähigkeit.
 
 ---
 
@@ -349,6 +412,7 @@ jedes `grep`, jeden Editor und jede Shell, in der der Name einmal vorkommt.
 ```
 pom.xml
 start.sh, start.bat                 Startskripte
+start.conf.example                  Vorlage für start.local.conf
 raycast/                            Raycast-Skript
 src/main/java/signaliduna/
   SqlClipboardFormatter.java        Fensterhülle, Einstiegspunkt
@@ -363,7 +427,7 @@ src/main/java/signaliduna/
   SqlTextSpans.java                 Zerlegt Text in Literale, Bezeichner, Kommentare
 src/main/resources/
   version.properties                Erzeugt aus der pom.xml
-src/test/java/signaliduna/          201 Tests
+src/test/java/signaliduna/          252 Tests
 ```
 
 Die Trennung ist Absicht: `SqlPrettyFormatter`, `SqlFormatService`,
@@ -403,7 +467,7 @@ Skripten. Beide wären beim Wechsel stillschweigend falsch geworden.
 ### Die Versionszeile
 
 ```
-Version 0.2 vom 26.09.2026
+Version 0.3 vom 27.09.2026
 ```
 
 Das Datum ist das **Build**-Datum aus dem Manifest, nicht das Datum des Releases.
@@ -426,15 +490,15 @@ mvn test                       # alle
 mvn test -Dtest=SqlPrettyFormatterTest   # eine Klasse
 ```
 
-**201 Tests**, verteilt auf:
+**252 Tests**, verteilt auf:
 
 | Klasse                   | Tests | Wofür                                                           |
 | ------------------------ | ----- | --------------------------------------------------------------- |
-| `FormatterPanelTest`     | 58    | Layout, Themes, Toasts, Freischaltung, Reentranz                |
+| `FormatterPanelTest`     | 97    | Layout, Themes, Zeilennummern, Toasts, Freischaltung, Reentranz   |
 | `SqlPrettyFormatterTest` | 47    | Formatierregeln, Operatorerhalt, Zeilenenden                    |
 | `SqlFormatServiceTest`   | 44    | Normalisierung, Literal- und Bezeichnerschutz                   |
 | `SqlDetectorTest`        | 33    | SQL-Erkennung, parametrisiert über Start- und Nicht-Startwörter |
-| `StartSkriptTest`        | 16    | Startskripte: Verhalten, Konventionen, Schalterparität, Laufzeitwahl |
+| `StartSkriptTest`        | 28    | Startskripte: Verhalten, Konventionen, Schalterparität, Laufzeitwahl |
 | `ClipboardServiceTest`   | 3     | Zwischenablage lesen und schreiben                              |
 
 Zum Nachzählen, weil die Zahl sonst leicht danebenliegt: `mvn test` meldet für
@@ -442,10 +506,10 @@ Zum Nachzählen, weil die Zahl sonst leicht danebenliegt: `mvn test` meldet für
 sondern eine Eigenheit von `@Nested` — die Zähler sitzen in den inneren Klassen.
 Wer nachzählen will, zählt die `<testcase>`-Elemente in
 `target/surefire-reports/TEST-*.xml` oder liest die Summe aus der
-Maven-Ausgabe (201).
+Maven-Ausgabe (251).
 
 `StartSkriptTest` führt `start.sh` wirklich aus — deshalb findet man dort Regressionen,
-die man beim Lesen übersieht. Fünf Beispiele aus der Praxis:
+die man beim Lesen übersieht. Sechs Beispiele aus der Praxis:
 
 - **Leeres Array unter `set -u`.** Auf bash 3.2, wie macOS es ausliefert, bricht
   die Expansion eines leeren Arrays ab. Startet man `start.sh` ohne Argumente, ist
@@ -467,6 +531,13 @@ die man beim Lesen übersieht. Fünf Beispiele aus der Praxis:
   Fehler 2, die Pipe gilt damit als fehlgeschlagen, und `set -e` beendet das Skript —
   ohne jede Ausgabe. Ein Absturz ohne Ausgabe sieht wie ein Skriptfehler aus statt
   wie ein falscher Pfad.
+- **Feste Pfade in `start.bat`.** `set "JAVA_HOME=c:\dev\jdk\jdk-25.0.2+10"` hat jeden
+  Rechner ohne genau dieses JDK kaputt gemacht — auch dort, wo Java und Maven
+  vorhanden waren. Der Test sucht jetzt nach jeder Zeile, die einen Pfad statt
+  einer Variablen setzt. Dazu der Gegenfall aus derselben Woche: eine
+  `.gitignore`-Zeile mit zwei Leerzeichen davor ist für Git ein *anderes* Muster,
+  und der Wächter, der nur die Zeile gelesen hat, meldete „in Ordnung". Er fragt
+  Git jetzt selbst.
 
 ---
 
@@ -476,12 +547,16 @@ Ehrlich benannt, was nicht abgesichert ist:
 
 - **`start.bat` läuft auf Windows, und das ist geprüft.** Ein Workflow führt es auf
   `windows-latest` aus: vollständige Testsuite, `start.bat -Pruefen` und ein echter
-  Start, danach wird gefragt, ob eine JVM läuft. Ein zweiter Job baut genau die
-  Verzeichnisstruktur des Release-ZIPs nach — `start.bat`, `jre/`, das fertige Jar,
-  ohne `pom.xml`, ohne `src/`, ohne Maven —, blendet danach `JAVA_HOME` und den
-  `PATH` aus und verlangt, dass die gestartete JVM unterhalb von `jre/` läuft. Das ist
-  der Nachweis, dass die App ohne System-Java startet, nicht nur die Anweisung, dass
-  sie das könnte. Die Fehler, die dabei auffielen, sind in eigenen Tests festgehalten.
+  Start, danach wird gefragt, ob eine JVM läuft. Dasselbe mit zwei Ergänzungen, die
+  beide aus Fehlern entstanden sind: der Prüfmodus wird mit einer echten
+  `start.local.conf` aufgerufen — brauchbarer Pfad mit Leerzeichen und toter Pfad —,
+  und `start.bat -Neu` baut aus dem Zustand heraus, in dem es vorher kein Jar gab.
+  Ein zweiter Job baut genau die Verzeichnisstruktur des Release-ZIPs nach —
+  `start.bat`, `jre/`, das fertige Jar, ohne `pom.xml`, ohne `src/`, ohne Maven —,
+  blendet danach `JAVA_HOME` und den `PATH` aus und verlangt, dass die gestartete JVM
+  unterhalb von `jre/` läuft. Das ist der Nachweis, dass die App ohne System-Java
+  startet, nicht nur die Anweisung, dass sie das könnte. Die Fehler, die dabei
+  auffielen, sind in eigenen Tests festgehalten.
 - **Ein gemeldeter Fehler mit verschwindenden `*` ist ungeklärt.** 47 Eingaben über
   alle sechs Dialekte sowie der Normalisierungs-Fallback ließen die Anzahl der
   Sternchen unverändert, ein Test über die laufende Anwendung ebenfalls. Die

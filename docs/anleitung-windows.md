@@ -100,8 +100,9 @@ Bei einem frisch entpackten ZIP sieht das so aus:
 
 ```
 Java    : C:\...\jre\bin\java.exe  (mitgeliefert)
+Konfig  : keine
 Maven   : nicht gefunden
-Jar     : target\SqlClipboardFormatter-0.2.jar - vorhanden
+Jar     : target\SqlClipboardFormatter-0.3.jar - vorhanden
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
@@ -109,19 +110,46 @@ Argumente: 0 an die JVM
 Der Klammerzusatz sagt Ihnen, **woher** das Java stammt. Bei
 `(mitgeliefert)` läuft alles auf der Laufzeit aus dem ZIP, und Sie können sich
 sicher sein, dass keine zweite Java-Installation auf Ihrem Rechner stört.
-Steht dort `(JAVA_HOME)` oder `(PATH)`, wurde der Ordner `jre/` nicht gefunden
-und Ihr eigenes Java genommen — was auch in Ordnung ist, sofern es Java 17
-oder neuer ist.
+Steht dort `(JAVA_HOME)`, `(PATH)` oder `(start.local.conf)`, wurde der Ordner
+`jre/` nicht gefunden und ein eigenes Java genommen — was auch in Ordnung ist,
+sofern es Java 17 oder neuer ist.
 
 `Maven   : nicht gefunden` ist beim entpackten ZIP **richtig** und kein Fehler:
 Maven wird nur gebraucht, um das Programm aus dem Quelltext zu übersetzen.
 
+`Konfig  : keine` heißt, dass es keine `start.local.conf` gibt. Das ist der
+Normalfall; sie wird nur gebraucht, wenn Sie einem festen Pfad folgen möchten.
+
 ### Ein bestimmtes Java erzwingen
 
-Falls auf Ihrem Rechner mehrere Java-Versionen liegen und Sie eine bestimmte
-verwenden wollen, setzen Sie die Variable `SQLFORMATTER_JAVA` auf den Pfad zur
-`java.exe`. Sie hat Vorrang vor `jre/`, `JAVA_HOME` und dem Suchpfad — damit
-lässt sich ein unerwünschtes Java zuverlässig ausschließen:
+Das gibt es zwei Wege, und sie unterscheiden sich in der Dauer.
+
+**Für immer, in diesem Ordner:** Kopieren Sie die Vorlage und tragen Sie den Pfad
+ein. Im ZIP liegt `start.conf.example` daneben, im Repository dieselbe Datei:
+
+```bat
+copy start.conf.example start.local.conf
+notepad start.local.conf
+```
+
+```properties
+java=C:\Program Files\Java\jdk-17\bin\java.exe
+```
+
+Ohne Anführungszeichen — Leerzeichen im Pfad sind in Ordnung. Alles hinter einem
+`#` ist Kommentar, eine kaputte Zeile wird übersprungen. Starten Sie danach wie
+gewohnt mit einem Doppelklick auf `start.bat`; `start.bat -Pruefen` zeigt Ihnen
+danach `Konfig  : ...start.local.conf` und `(start.local.conf)` als Quelle.
+
+Steht in der Datei ein Pfad, den es nicht gibt, startet das Programm trotzdem:
+Das Skript prüft jeden Pfad vorher und geht dann weiter zu `JAVA_HOME` und dem
+Suchpfad. Sie sehen am Klammerzusatz, welcher Eintrag wirklich benutzt wurde.
+
+**Nur für dieses eine Fenster:** setzen Sie die Variable `SQLFORMATTER_JAVA`. Sie
+gilt, bis das Fenster zu ist, und hat Vorrang vor `start.local.conf`, `JAVA_HOME`
+und dem Suchpfad — damit lässt sich ein unerwünschtes Java zuverlässig
+ausschließen. Gegen den Ordner `jre/` eines entpackten ZIPs hilft sie allerdings
+nicht: der wird immer zuerst genommen, damit das ZIP auf sich selbst läuft.
 
 ```powershell
 $env:SQLFORMATTER_JAVA = "C:\Program Files\Java\jdk-17\bin\java.exe"
@@ -133,6 +161,21 @@ Gilt nur für dieses Fenster. Für dauerhaft:
 ```powershell
 [Environment]::SetEnvironmentVariable("SQLFORMATTER_JAVA", "C:\Program Files\Java\jdk-17\bin\java.exe", "User")
 ```
+
+### Auch Maven und das JDK fürs Übersetzen festlegen
+
+Dieselbe Datei nimmt noch zwei Einträge auf, die nur beim Übersetzen aus dem
+Quelltext etwas tun:
+
+```properties
+maven=C:\Programme\apache-maven-3.9.9\bin\mvn.cmd
+maven-jdk=C:\Program Files\Java\jdk-17
+```
+
+`maven` zeigt auf die `mvn.cmd`, `maven-jdk` auf den Ordner **mit** `bin` darin,
+nicht auf die `java.exe`. `maven-jdk` wird nur dann gebraucht, wenn Maven mit
+einem anderen Java übersetzen soll als das, mit dem die App startet — Maven nimmt
+sein Java aus `JAVA_HOME`. Leer lassen heißt: `JAVA_HOME` bleibt, wie es ist.
 
 ## 4. Der andere Weg: aus dem Quelltext übersetzen
 
@@ -184,8 +227,9 @@ Sie sehen dann zum Beispiel:
 
 ```
 Java    : C:\Program Files\Java\jdk-17\bin\java.exe
+Konfig  : keine
 Maven   : mvn
-Jar     : target\SqlClipboardFormatter-0.2.jar - fehlt
+Jar     : target\SqlClipboardFormatter-0.3.jar - fehlt
 Bauen   : ja
 Argumente: 0 an die JVM
 ```
@@ -195,6 +239,7 @@ Die Zeilen bedeuten:
 | Zeile       | Bedeutung                                                                                                       |
 | ----------- | --------------------------------------------------------------------------------------------------------------- |
 | `Java`      | gefundenes Java. „Fehler: kein Java gefunden" heißt: zurück zu Schritt 1                                        |
+| `Konfig`    | die `start.local.conf`, falls es eine gibt — siehe „Ein bestimmtes Java erzwingen"                             |
 | `Maven`     | gefundenes Maven oder „nicht gefunden". Fehlt es, ist das beim ersten Übersetzen ein Problem, später nicht mehr |
 | `Jar`       | die übersetzte Programmdatei. „fehlt" ist beim ersten Mal normal                                                |
 | `Bauen`     | ob beim Starten übersetzt werden muss                                                                           |
@@ -238,11 +283,25 @@ danach das Programm.
 
 ## 6. Bedienung
 
-![Oberfläche im dunklen Design](bild-dunkel.png)
+![Oberfläche im hellen Design](bild-hell.png)
+
+So sieht das Programm beim Start aus. Das dunkle Design erreichen Sie über den
+Knopf oben rechts.
 
 Oben steht der Titel **SQL Formatter**, rechts daneben ein Knopf zum Umschalten
 zwischen dunkel und hell. Darunter das große Textfeld, rechts daneben die Auswahl
 **Dialect:**. Ganz unten die Statuszeile.
+
+### Die Zahlen links im Textfeld
+
+Links im Textfeld stehen Zahlen. Sie zählen die **Zeilen, die Sie gerade sehen**,
+nicht die Absätze im Text: Das Feld ist 84 Zeichen breit, und eine längere Zeile
+bricht weich um. Bekommt eine Zeile davon zwei Bildschirmzeilen, stehen dort auch
+zwei Zahlen.
+
+Das ist der Grund, warum die Zahlen hilfreich sind: Jede Zahl gehört zu genau der
+Zeile, die daneben steht — beim Tippen, beim Formatieren und beim Blättern. Die
+Statuszeile unten nennt dieselbe Anzahl als „Zeilen".
 
 ### Der eine wichtige Punkt: die Statuszeile
 
@@ -336,7 +395,9 @@ So prüfen Sie, was in Ihrer Datei wirklich steht:
 
 Der Knopf oben rechts zeigt an, **wohin** Sie wechseln, nicht wo Sie sind: Im
 dunklen Design steht dort `☀ Hell`, im hellen `☾ Dunkel`. Ein Klick schaltet um.
-Die Wahl gilt für diese Sitzung; beim nächsten Start ist es wieder dunkel.
+Die Wahl gilt für diese Sitzung; beim nächsten Start ist es wieder hell.
+
+![Oberfläche im dunklen Design](bild-dunkel.png)
 
 ## 7. Optional: Schnellzugriff über eine Tastenkombination
 
@@ -375,12 +436,12 @@ Skript ausgibt:
 | `Fehler: kein Java gefunden. Java 17 oder neuer installieren.`                | Java fehlt oder ist zu alt — Schritt 3                                                                      |
 | `Fehler: Jar fehlt oder ist veraltet, aber weder mvnw.cmd noch mvn gefunden.` | Im entpackten ZIP fehlt das fertige Programm — etwa weil der Ordner `target/` gelöscht wurde. Im Quelltext: Maven fehlt, obwohl noch nicht übersetzt wurde |
 | `Fehler: der Build ist fehlgeschlagen.`                                       | Beim Übersetzen ging etwas schief — die ausführliche Meldung steht darüber                                  |
-| `Fehler: "target\SqlClipboardFormatter-0.2.jar" fehlt trotz Bauvorgang.`      | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
+| `Fehler: "target\SqlClipboardFormatter-0.3.jar" fehlt trotz Bauvorgang.`      | Der Build hat nichts erzeugt. Im Namen steckt die Versionsnummer, sie wandert mit jedem Versionswechsel mit |
 
 ### „Java wurde nicht gefunden", obwohl Java installiert ist
 
-Das Skript sucht der Reihe nach im Ordner `jre/`, in der Variable
-`SQLFORMATTER_JAVA`, in `JAVA_HOME` und zuletzt im Suchpfad. Steht in
+Das Skript sucht der Reihe nach im Ordner `jre/`, in der `start.local.conf`, in
+der Variable `SQLFORMATTER_JAVA`, in `JAVA_HOME` und zuletzt im Suchpfad. Steht in
 `start.bat -Pruefen` weder `(mitgeliefert)` noch `(JAVA_HOME)`, ist Ihr Java an
 einer Stelle installiert, die der Skript nicht kennt. Setzen Sie dann
 `JAVA_HOME` — oder nehmen Sie Java in den Suchpfad auf:
@@ -394,15 +455,16 @@ Danach PowerShell neu öffnen. Der Pfad muss auf den Ordner zeigen, in dem
 
 ### „mvn" wird nicht gefunden, obwohl Maven installiert ist
 
-Das Skript sucht in dieser Reihenfolge: im Projekt mitgelieferter Wrapper,
-dann `mvn` im Suchpfad, dann `%MAVEN_HOME%\bin\mvn.cmd`. Es sagt Ihnen im
-Prüfmodus, was davon gefunden wurde:
+Das Skript sucht in dieser Reihenfolge: dem Eintrag `maven` aus der
+`start.local.conf`, dem mitgelieferten Wrapper `mvnw.cmd`, dann `mvn` im
+Suchpfad, dann `%MAVEN_HOME%\bin\mvn.cmd`. Es sagt Ihnen im Prüfmodus, was davon
+gefunden wurde:
 
 ```bat
 .\start.bat -Pruefen
 ```
 
-Steht dort `Maven   : nicht gefunden`, ist keiner der drei Wege sichtbar.
+Steht dort `Maven   : nicht gefunden`, ist keiner der vier Wege sichtbar.
 Prüfen Sie in dieser Reihenfolge:
 
 1. Ist `mvn.cmd` im Suchpfad? In einer neuen PowerShell:
@@ -487,7 +549,8 @@ Abschnitt 8 beschrieben.
 
 Kopieren Sie den Ordner `sqlClipboardFormatter` auf den neuen Rechner. Ist dort
 noch kein Java installiert, holen Sie das zuerst nach. Einmal übersetzt läuft
-das Programm ohne Maven weiter.
+das Programm ohne Maven weiter. Eine eigene `start.local.conf` wandert dabei mit
+— sie enthält Ihre Pfade und gilt auf dem neuen Rechner so, wie sie hier gilt.
 
 Mehr zum Programm selbst — Bauen, Aufbau, Tests, Versionierung — steht in der
 [README](../README.md).

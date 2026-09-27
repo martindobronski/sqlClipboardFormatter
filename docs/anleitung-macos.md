@@ -137,13 +137,54 @@ nehmen Sie den Weg über das Terminal.
 | `./start.sh -Pruefen` | nur nachsehen, ob die Umgebung passt — startet nichts |
 | `./start.sh -Xmx512m` | gibt 512 MB Speicher für das Programm frei |
 
+### Wenn Java oder Maven an einer ungewöhnlichen Stelle liegen
+
+Fast immer findet `start.sh` von selbst das richtige Java. Liegt es bei Ihnen
+etwa in einer nicht im Suchpfad enthaltenen Version, tragen Sie den Pfad in
+`start.local.conf` ein — eine Datei neben `start.sh`, die **nicht** mit Git
+verwaltet wird, weil sie die Pfade Ihres Rechners enthält:
+
+```sh
+cp start.conf.example start.local.conf
+```
+
+```
+java=/usr/local/opt/openjdk@17/bin/java
+maven=/usr/local/bin/mvn
+maven-jdk=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
+```
+
+Anführungszeichen sind nicht nötig, Leerzeichen im Pfad sind in Ordnung, alles
+hinter einem `#` ist Kommentar. `maven-jdk` brauchen Sie nur, wenn Maven mit
+einem anderen Java übersetzen soll als dem, mit dem die Programm startet; leer
+lassen heißt, `JAVA_HOME` bleibt unangetastet.
+
+Ein Eintrag, dessen Pfad es nicht gibt, ist kein Problem: `start.sh` prüft
+jeden Pfad und geht dann weiter. `./start.sh -Pruefen` zeigt Ihnen, welcher
+Eintrag wirklich benutzt wurde — steht dort `Konfig  : ...` und daneben
+`(start.local.conf)`, ist es Ihrer.
+
 ## 6. Bedienung
 
-![Oberfläche im dunklen Design](bild-dunkel.png)
+![Oberfläche im hellen Design](bild-hell.png)
+
+So sieht das Programm beim Start aus. Das dunkle Design erreichen Sie über den
+Knopf oben rechts.
 
 Oben steht der Titel **SQL Formatter**, rechts daneben ein Knopf zum Umschalten
 zwischen dunkel und hell. Darunter das große Textfeld, rechts daneben die Auswahl
 **Dialect:**. Ganz unten die Statuszeile.
+
+### Die Zahlen links im Textfeld
+
+Links im Textfeld stehen Zahlen. Sie zählen die **Zeilen, die Sie gerade sehen**,
+nicht die Absätze im Text: Das Feld ist 84 Zeichen breit, und eine längere Zeile
+bricht weich um. Bekommt eine Zeile davon zwei Bildschirmzeilen, stehen dort auch
+zwei Zahlen.
+
+Das ist der Grund, warum die Zahlen hilfreich sind: Jede Zahl gehört zu genau der
+Zeile, die daneben steht — beim Tippen, beim Formatieren und beim Blättern. Die
+Statuszeile unten nennt dieselbe Anzahl als „Zeilen".
 
 ### Der eine wichtige Punkt: die Statuszeile
 
@@ -220,8 +261,10 @@ Rechts neben der Auswahl steht, was die Wahl für den Text im Feld bewirkt:
 
 Der Knopf oben rechts zeigt an, **wohin** Sie wechseln, nicht wo Sie sind: Im
 dunklen Design steht dort `☀ Hell`, im hellen `☾ Dunkel`. Ein Klick schaltet um.
-Die Wahl gilt für diese Sitzung; beim nächsten Start ist es wieder dunkel. Das
+Die Wahl gilt für diese Sitzung; beim nächsten Start ist es wieder hell. Das
 Programm merkt sich die Einstellung absichtlich nicht.
+
+![Oberfläche im dunklen Design](bild-dunkel.png)
 
 ## 7. Optional: ein Hotkey für den Formatter
 
@@ -298,8 +341,9 @@ Java durchgereicht werden:
 
 ```
 Java    : /usr/bin/java
+Konfig  : keine
 Maven   : mvn
-Jar     : target/SqlClipboardFormatter-0.2.jar (vorhanden)
+Jar     : target/SqlClipboardFormatter-0.3.jar (vorhanden)
 Bauen   : falls Quellen neuer
 Argumente: 0 an die JVM
 ```
