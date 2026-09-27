@@ -781,7 +781,21 @@ public final class FormatterPanel extends JPanel {
         int zeilen = Math.max(
                 sqlArea.getDocument().getDefaultRootElement().getElementCount(), bildschirmzeilen);
         umfangLabel.setText(zeilen + (zeilen == 1 ? " Zeile, " : " Zeilen, ")
-                + t.length() + " Zeichen");
+                + zaehlbareZeichen(t) + " Zeichen");
+    }
+
+    /**
+     * Zeichen inklusive der Zeilenumbrueche, aber ohne den Unterschied
+     * zwischen den Systemen.
+     *
+     * <p>Wer den Text einliest, bekommt unter Windows CRLF und unter macOS
+     * LF. Zaehlt man die Zeichen im Dokument, zeigt derselbe SQL-Text je
+     * nach System zwei Zeichen mehr pro Umbruch - der Zaehler waere dann
+     * eine Angabe ueber den Rechner statt ueber den Text. Ein Umbruch
+     * zaehlt hier als ein Zeichen, wie im Textfeld zu sehen.
+     */
+    private static int zaehlbareZeichen(String t) {
+        return t.replace("\r\n", "\n").replace('\r', '\n').length();
     }
 
     /**

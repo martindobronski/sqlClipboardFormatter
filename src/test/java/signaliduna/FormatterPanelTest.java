@@ -993,6 +993,13 @@ class FormatterPanelTest {
             sqlArea.setText("nur eine");
             assertEquals("1 Zeile, 8 Zeichen", umfangLabel.getText(),
                     "bei einer Zeile steht etwas anderes als in der Mehrzahl");
+
+            // Unter Windows landet CRLF in der Zwischenablage. Zaehlt man
+            // stattdessen die Zeichen im Dokument, zeigt derselbe Text dort
+            // zwei Zeichen mehr je Umbruch als hier.
+            sqlArea.setText("a\r\nbb\r\nccc");
+            assertEquals("3 Zeilen, 8 Zeichen", umfangLabel.getText(),
+                    "CRLF aus der Zwischenablage darf den Zaehler nicht verfälschen");
         }
 
         @Test
