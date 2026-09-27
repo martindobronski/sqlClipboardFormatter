@@ -25,6 +25,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.GridBagLayout;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
@@ -755,8 +756,11 @@ public final class FormatterPanel extends JPanel {
         // Fremdkomponenten, das Fenster muss im Normalzustand also neu
         // gepackt werden - sonst schneidet der Rahmen die Knöpfe ab.
         Window fenster = SwingUtilities.getWindowAncestor(this);
-        if (fenster != null && gehoertGepackt(maximiert(fenster), fenster.getBounds(), bildschirm())) {
-            fenster.pack();
+        if (fenster != null) {
+            Rectangle rahmen = fenster.getBounds();
+            if (gehoertGepackt(maximiert(fenster), rahmen, bildschirmVon(rahmen))) {
+                fenster.pack();
+            }
         }
         repaint();
     }
@@ -768,34 +772,44 @@ public final class FormatterPanel extends JPanel {
      * seinen Zustand, und aus einem Fenster im echten Vollbild wird ein
      * kleines oben links - es gibt keine Moeglichkeit, das zurueckzuholen.
      *
-     * <p>Beide Faelle werden ueber die Fenstergroesse erkannt, weil der
-     * Vollbildzustand selbst nicht abfragbar ist: macOS kennt ihn nur intern.
-     * Ein maximiertes Fenster meldet ihn ueber {@code getExtendedState()}, ein
-     * Fenster im echten Vollbild darueber, dass es den Bildschirm fuellt.
+     * <p>Beide Faelle werden erkannt, ohne sie zuruecksetzen zu muessen: der
+     * maximierte ueber den Zustand, den das Fenster selbst meldet, der echte
+     * Vollbild darueber, dass das Fenster den Bildschirm fuellt, auf dem es
+     * liegt. Ein maximiertes Fenster laesst unter Windows die Taskleiste weg,
+     * fuellt den Bildschirm also nie ganz - deshalb reicht die Groesse allein
+     * nicht, und deshalb wird gar nicht gepackt statt gepackt und zurueckgesetzt.
+     *
+     * @param bildschirmRahmen die Grenzen des Bildschirms, auf dem das Fenster liegt
      */
     static boolean gehoertGepackt(boolean maximiert, Rectangle fensterRahmen, Rectangle bildschirmRahmen) {
         return !maximiert && !bildschirmRahmen.equals(fensterRahmen);
     }
 
-    /** Meldet, ob das Fenster maximiert oder in den Vollbildmodus geblendet ist. */
+    /** Meldet, ob das Fenster sich selbst als maximiert fuehrt. */
     private static boolean maximiert(Window fenster) {
         if (fenster instanceof Frame) {
             int zustand = ((Frame) fenster).getExtendedState();
-            if ((zustand & Frame.MAXIMIZED_BOTH) != 0) {
-                return true;
-            }
+            return (zustand & Frame.MAXIMIZED_BOTH) != 0;
         }
-        return bildschirm().equals(fenster.getBounds());
+        return false;
     }
 
-    /** Das umschliessende Rechteck aller Bildschirme. */
-    private static Rectangle bildschirm() {
-        Rectangle gesamt = null;
-        for (GraphicsDevice geraet : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+    /**
+     * Die Grenzen des Bildschirms, auf dem das Fenster liegt - erkannt an der
+     * Mitte des Rahmens, weil ein Fenster ueber zwei Bildschirme ragen kann.
+     */
+    private static Rectangle bildschirmVon(Rectangle fensterRahmen) {
+        GraphicsDevice[] aufbau =
+                GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices();
+        Point mitte = new Point(fensterRahmen.x + fensterRahmen.width / 2,
+                fensterRahmen.y + fensterRahmen.height / 2);
+        for (GraphicsDevice geraet : aufbau) {
             Rectangle bild = geraet.getDefaultConfiguration().getBounds();
-            gesamt = gesamt == null ? bild : gesamt.union(bild);
+            if (bild.contains(mitte)) {
+                return bild;
+            }
         }
-        return gesamt == null ? new Rectangle() : gesamt;
+        return aufbau[0].getDefaultConfiguration().getBounds();
     }
 
     /**
