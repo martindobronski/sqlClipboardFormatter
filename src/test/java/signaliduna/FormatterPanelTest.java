@@ -5,8 +5,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.awt.Rectangle;
 import javax.swing.JButton;
+import javax.swing.Icon;
+import javax.swing.JToggleButton;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JScrollPane;
+import javax.swing.JViewport;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.text.JTextComponent;
@@ -22,7 +28,9 @@ import com.formdev.flatlaf.FlatLightLaf;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.BorderLayout;
+import java.awt.Graphics2D;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -35,11 +43,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Testet die Verdrahtung der echten UI, insbesondere das Verhalten, das vorher
@@ -57,6 +69,8 @@ class FormatterPanelTest {
     private JButton formatButton;
     private JButton writeButton;
     private JButton exitButton;
+    private JToggleButton themeButton;
+    private JLabel umfangLabel;
     @SuppressWarnings("unchecked")
     private JComboBox<SqlDialect> dialectCombo;
     private JLabel statusLabel;
@@ -73,6 +87,8 @@ class FormatterPanelTest {
         formatButton = field("formatButton");
         writeButton = field("writeButton");
         exitButton = field("exitButton");
+        themeButton = field("themeButton");
+        umfangLabel = field("umfangLabel");
         dialectCombo = field("dialectCombo");
         statusLabel = field("statusLabel");
         dialectWirkung = field("dialectWirkung");
@@ -84,8 +100,6 @@ class FormatterPanelTest {
 
         @Test
         void startzustand_ist_gesperrt() {
-            assertFalse(formatButton.isEnabled(), "Formatieren muss starten gesperrt");
-            assertFalse(writeButton.isEnabled(), "Schreiben muss starten gesperrt");
             assertTrue(readButton.isEnabled(), "Einlesen muss starten moeglich sein");
         }
 
@@ -153,21 +167,64 @@ class FormatterPanelTest {
         }
 
         @Test
-        void neutrale_meldung_bei_gueltigem_sql() {
+        @DisplayName("der Ruhezustand laesst dem Zaehler den Platz")
+        void ruhezustand_zeigt_den_zaehler() {
             sqlArea.setText("select 1");
-            assertEquals("Bereit - Text sieht nach SQL aus.", statusLabel.getText());
+            assertEquals("", statusLabel.getText(), "im Ruhezustand steht kein Text");
+            assertFalse(statusLabel.isVisible(), "im Ruhezustand ist keine Meldung da");
+            assertTrue(umfangLabel.isVisible(), "im Ruhezustand steht der Zaehler");
+
+            sqlArea.setText("");
+            assertEquals("", statusLabel.getText());
+            assertTrue(umfangLabel.isVisible());
         }
 
         @Test
-        void einles_meldung_bei_leerem_feld() {
-            sqlArea.setText("");
-            assertEquals("Bereit - Bitte SQL aus der Zwischenablage laden.", statusLabel.getText());
-        }
-    }
+        @DisplayName("eine echte Meldung verdraengt den Zaehler an derselben Stelle")
+        void meldung_verdraengt_den_zaehler() throws Exception {
+            JLabel zaehler = umfangLabel;
+            // Beide Texte haengen in demselben Container: damit teilen sie sich
+            // zwangslaeufig denselben Platz und koennen sich nicht gegenseitig
+            // in die Breite schieben. Getestet wird die Struktur, nicht eine
+            // Pixelposition - die haengt im Testfenster von Layout-Timing ab.
+            JPanel infoLine = field("infoLine");
+            java.awt.Container platz = zaehler.getParent();
+            assertSame(platz, statusLabel.getParent(),
+                    "Zaehler und Meldung teilen sich nicht denselben Platz");
+            assertSame(infoLine, platz.getParent(),
+                    "der Platz ist nicht die Zeile selbst, sondern ein eigenes Feld darin");
 
-    @Nested
-    @DisplayName("Formatieren ueber den echten Button")
-    class FormatierenDurchClick {
+            sqlArea.setText("select 1");
+            assertTrue(zaehler.isVisible(), "im Ruhezustand steht der Zaehler");
+            assertFalse(statusLabel.isVisible(), "im Ruhezustand steht keine Meldung");
+
+            sqlArea.setText("Einkaufsliste");
+            assertTrue(statusLabel.getText().startsWith("\u26a0"), statusLabel.getText());
+            assertFalse(zaehler.isVisible(), "waehrend einer Meldung steht der Zaehler nicht daneben");
+            assertTrue(statusLabel.isVisible(), "die Meldung steht an ihrem Platz");
+
+            // Sichtbar sein reicht nicht: eine Komponente, die das Layout nicht
+            // anordnet, hat Breite 0 und wird gar nicht gezeichnet. Genau das
+            // war der Fehler, als beide Texte auf dasselbe CENTER gelegt
+            // wurden - der zweite verdraengte den ersten im Layout.
+            panel.setSize(700, 500);
+            layoutiere(panel);
+            assertTrue(statusLabel.getWidth() > 0,
+                    "die Meldung hat keine Breite und wird nicht gezeichnet");
+        }
+
+        /**
+         * Ordnet auch die verschachtelten Ebenen; {@code doLayout()} allein legt
+         * nur die direkten Kinder an.
+         */
+        private void layoutiere(java.awt.Container c) {
+            c.doLayout();
+            for (java.awt.Component kind : c.getComponents()) {
+                if (kind instanceof java.awt.Container kc) {
+                    layoutiere(kc);
+                }
+            }
+        }
 
         @Test
         @DisplayName("der Library-Text landet im Feld")
@@ -352,6 +409,28 @@ class FormatterPanelTest {
         }
 
         @Test
+        @DisplayName("der Hinweis erscheint nur, wenn er etwas meldet")
+        void hinweis_ist_nur_bei_abweichung_sichtbar() throws Exception {
+            // Fuelltext: Standard SQL genuegt - das ist keine Meldung, sondern
+            // der Normalfall, und stand vorher als Zeile neben dem Dropdown.
+            sqlArea.setText("select 1");
+            warteAufDialectAnzeige("Standard SQL genügt");
+            assertFalse(dialectWirkung.isVisible(),
+                    "der Normalfall soll den Chip nicht zeigen");
+
+            // Abweichung: jetzt ist die Meldung das, was sie sein soll.
+            sqlArea.setText("select top 10 id from t");
+            warteAufDialectAnzeige("wirksam: T-SQL");
+            assertTrue(dialectWirkung.isVisible(),
+                    "eine Abweichung gehoert sichtbar gemacht");
+
+            // Und wieder zurueck, wenn sie entfaellt.
+            sqlArea.setText("");
+            warteAufDialectAnzeige("—");
+            assertFalse(dialectWirkung.isVisible(), "der Chip blieb stehen");
+        }
+
+        @Test
         @DisplayName("die Anzeige blockiert die Bedienung nicht")
         void anzeige_ist_asynchron() throws Exception {
             sqlArea.setText("select top 10 id from t");
@@ -392,20 +471,46 @@ class FormatterPanelTest {
             }
         }
 
-        @Test
-        @DisplayName("eine leere Auswahl darf die Formatierung nicht sprengen")
-        void leere_auswahl_ist_vertragsgemaess() {
-            dialectCombo.setSelectedItem(null);
-            assertNull(dialectCombo.getSelectedItem(), "Voraussetzung fuer diesen Vertrag");
+          @Test
+          @DisplayName("eine leere Auswahl darf die Formatierung nicht sprengen")
+          void leere_auswahl_ist_vertragsgemaess() {
+              dialectCombo.setSelectedItem(null);
+              assertNull(dialectCombo.getSelectedItem(), "Voraussetzung fuer diesen Vertrag");
 
-            // Der Formatter bekommt den Wert ungeprueft durchgereicht und muss
-            // null auf Standard abbilden - sonst waere die App hier angreifbar.
-            assertEquals(
-                    SqlPrettyFormatter.format("select 1", SqlDialect.STANDARD).sql(),
-                    SqlPrettyFormatter.format("select 1", (SqlDialect) dialectCombo.getSelectedItem()).sql(),
-                    "null-Dialekt muss wie Standard behandelt werden");
-        }
-    }
+              // Der Formatter bekommt den Wert ungeprueft durchgereicht und muss
+              // null auf Standard abbilden - sonst waere die App hier angreifbar.
+              assertEquals(
+                      SqlPrettyFormatter.format("select 1", SqlDialect.STANDARD).sql(),
+                      SqlPrettyFormatter.format("select 1", (SqlDialect) dialectCombo.getSelectedItem()).sql(),
+                      "null-Dialekt muss wie Standard behandelt werden");
+          }
+
+          @Test
+          @DisplayName("ein zu langer Text bricht den Dialektvergleich ab")
+          void zu_langer_text_bricht_den_vergleich_ab() throws Exception {
+              JLabel wirkung = field("dialectWirkung");
+              sqlArea.setText("select ".repeat(700));
+
+              // Der Vergleich laeuft im Hintergrund, also warten bis der Hinweis
+              // da ist. Bei 4900 Zeichen soll gar kein Vergleich mehr starten.
+              String erwartet = "Text zu lang, um die Dialekte zu vergleichen.";
+              String tooltip = null;
+              for (int i = 0; i < 100; i++) {
+                  Thread.sleep(20);
+                  tooltip = leseAufEdt(wirkung::getToolTipText);
+                  if (erwartet.equals(tooltip)) {
+                      break;
+                  }
+              }
+              assertEquals(erwartet, tooltip,
+                      "ohne Obergrenze wuerde der Vergleich den ganzen Text durch alle "
+                              + "Dialekte schieben, bei jedem Tastendruck von neu");
+              assertEquals("\u2014", leseAufEdt(wirkung::getText),
+                      "ohne Vergleichsergebnis wird nichts behauptet");
+              assertFalse(leseAufEdt(wirkung::isVisible),
+                      "ohne Vergleichsergebnis bleibt die Anzeige weg");
+          }
+      }
 
     @Nested
     @DisplayName("Statusmeldung nennt den gewaehlten Pfad")
@@ -440,14 +545,16 @@ class FormatterPanelTest {
     class BeendenButton {
 
         @Test
-        @DisplayName("ist ein Textlink ohne eigene Flaeche, kein roter Kasten")
+        @DisplayName("Beenden bleibt ein Textlink")
         void ist_als_textlink_gesetzt() {
             assertEquals("Beenden", exitButton.getText());
-            // Vorher: rote, gefuellte Flaeche - dieselbe visuelle Gewichtung
-            // wie "Ins Clipboard schreiben", obwohl es nichts mit dem
-            // SQL-Text zu tun hat.
+            // Mit eigener Flaeche und eigenem Rahmen wuerde Beenden so viel
+            // Gewicht bekommen wie "Ins Clipboard schreiben", obwohl es die
+            // am seltensten benutzte Aktion ist.
             assertFalse(exitButton.isContentAreaFilled(), "Beenden darf keine Flaeche malen");
-            assertEquals(new Color(0x9AA4B0), exitButton.getForeground());
+            assertFalse(exitButton.isBorderPainted(), "Beenden darf keinen Rahmen tragen");
+            assertTrue(contrast(Theme.DUNKEL.gedaempft, Theme.DUNKEL.hintergrund) > 4.5,
+                    "der Link-Text muss WCAG AA erfuellen");
         }
 
         @Test
@@ -616,33 +723,276 @@ class FormatterPanelTest {
         }
 
         @Test
-        @DisplayName("gesperrte Buttons haben ausreichenden Kontrast")
+        @DisplayName("gesperrte Buttons behalten ihre Farbe und haben ausreichenden Kontrast")
         void gesperrte_buttons_haben_kontrast() {
             sqlArea.setText("Einkaufsliste");
             assertFalse(formatButton.isEnabled());
 
-            assertEquals(new Color(0x2A2E34), formatButton.getBackground());
-            assertEquals(new Color(0x9AA4B0), formatButton.getForeground());
-            // Vorher: weisse Schrift auf LIGHT_GRAY = 1,82:1
+            // Kein neutrales Grau: die Farbe gehoert zum Knopf, nicht nur zum
+            // aktiven Zustand. Sonst waere beim Start - leeres Textfeld, zwei
+            // von drei Knöpfen gesperrt - nicht zu erkennen, welcher Knopf das
+            // Formatieren ist.
+            assertEquals(Theme.DUNKEL.gesperrt(Theme.DUNKEL.akzent), formatButton.getBackground());
+            assertEquals(Theme.DUNKEL.aufDeaktiviert, formatButton.getForeground());
             assertTrue(contrast(formatButton.getBackground(), formatButton.getForeground()) > 4.5,
                     "Kontrast muss WCAG AA (4.5:1) erfuellen");
+            // Und die Farbe muss noch als Farbe erkennbar sein, also nicht
+            // vollstaendig im Hintergrund verschwinden.
+            assertNotEquals(Theme.DUNKEL.hintergrund, formatButton.getBackground(),
+                    "die entschaerfte Farbe ist der Hintergrund geworden");
         }
 
         @Test
-        @DisplayName("nur die Hauptaktion traegt die Akzentfarbe, die anderen bleiben grau")
-        void nur_die_hauptaktion_ist_akzentiert() {
+        @DisplayName("jede Aktion hat ihre eigene Farbe")
+        void jede_aktion_hat_ihre_eigene_farbe() {
             sqlArea.setText("select 1");
 
-            assertEquals(new Color(0x1D4ED8), formatButton.getBackground());
-            assertEquals(Color.WHITE, formatButton.getForeground());
+            // Ueber die Palette statt ueber feste Zahlen: geprueft wird die
+            // Rolle, nicht ein zufaellig gewaehlter Farbwert.
+            assertEquals(Theme.DUNKEL.akzent, formatButton.getBackground());
+            assertEquals(Theme.DUNKEL.hintergrund, readButton.getBackground());
+            assertEquals(Theme.DUNKEL.tonal, writeButton.getBackground());
 
-            // Vorher jede Schaltflaeche in einer eigenen Farbe (Blau/Gruen/
-            // Orange/Rot). Grau ist hier Absicht: die Farbe benennt die
-            // Hauptaktion, nicht die Funktion.
-            assertEquals(new Color(0x31363C), readButton.getBackground());
-            assertEquals(new Color(0x31363C), writeButton.getBackground());
-            assertEquals(readButton.getBackground(), writeButton.getBackground(),
-                    "Einlesen und Schreiben teilen sich dieselbige Sekundaerfarbe");
+            // Drei verschiedene Farben sind nur dann ein Vorteil, wenn man sie
+            // auseinanderhaelt. Zwei gleiche wuerden die Unterscheidung wieder
+            // aufheben, die sie schaffen soll.
+            assertNotEquals(readButton.getBackground(), writeButton.getBackground(),
+                    "Einlesen und Schreiben teilen sich dieselbe Farbe");
+            assertNotEquals(formatButton.getBackground(), readButton.getBackground(),
+                    "Formatieren und Einlesen teilen sich dieselbe Farbe");
+            assertNotEquals(formatButton.getBackground(), writeButton.getBackground(),
+                    "Formatieren und Schreiben teilen sich dieselbe Farbe");
+        }
+
+        @Test
+        @DisplayName("auch die gesperrten Knoepfe bleiben unterscheidbar")
+        void gesperrte_knoepfe_bleiben_unterscheidbar() {
+            // Der Startzustand: nur Einlesen ist frei. Wer hier zwei gleiche
+            // Flaechen sieht, raeht an der Bedienung vorbei.
+            assertTrue(readButton.isEnabled());
+            assertFalse(formatButton.isEnabled());
+            assertFalse(writeButton.isEnabled());
+
+            assertNotEquals(formatButton.getBackground(), writeButton.getBackground(),
+                    "die beiden gesperrten Knoepfe sind nicht unterscheidbar");
+            // Die umrandete Stufe hat per Definition keine Flaeche - erkennbar
+            // bleibt sie nur an ihrer Linie. Faellt die aus, ist der Knopf
+            // weg, nicht nur inaktiv.
+            assertFalse(readButton.isContentAreaFilled(), "Einlesen bleibt ohne Flaeche");
+            javax.swing.border.Border linie =
+                    ((javax.swing.border.CompoundBorder) readButton.getBorder()).getOutsideBorder();
+            assertEquals(Theme.DUNKEL.akzentText,
+                    ((javax.swing.border.LineBorder) linie).getLineColor(),
+                    "der aktive Knopf traegt keine Akzentlinie");
+        }
+        @Test
+        @DisplayName("alle drei Aktionsstufen teilen sich eine Akzentfarbe")
+
+        void alle_stufen_stammen_aus_einer_akzentfarbe() {
+            // Drei Knoepfe in drei Farbtönen sahen willkürlich aus. Geprueft
+            // wird deshalb nicht "sie sind verschieden", sondern "alle Stufen
+            // sind Stufen desselben Farbtons": der Blaukanal fuehrt, und
+            // keiner ist neutral oder braun. Braun ist der Ton, der in
+            // UI-Zusammenhaengen am schnellsten hochwertig wirkt.
+            //
+            // Beide Paletten werden geprueft, nicht nur die aktive: ein Test,
+            // der nur das dunkle Theme sieht, haette ein braunes helles
+            // Theme unbeanstandet gelassen.
+            for (Theme theme : List.of(Theme.HELL, Theme.DUNKEL)) {
+                for (Color c : List.of(theme.akzent, theme.akzentText, theme.tonal)) {
+                    assertTrue(c.getBlue() >= c.getRed() && c.getBlue() >= c.getGreen(),
+                            () -> theme.bezeichnung() + ": Blau fuehrt nicht: " + c);
+                    assertTrue(c.getBlue() - c.getRed() >= 15,
+                            () -> theme.bezeichnung() + ": zu neutral oder braun: " + c);
+                }
+            }
+            // Und die drei Stufen muessen sich auch unterscheiden, sonst
+            // waeren sie ein System aus einem Knopf.
+            sqlArea.setText("select 1");
+            assertNotEquals(formatButton.getBackground(), writeButton.getBackground(),
+                    "Formatieren und Schreiben sind dieselbe Stufe");
+        }
+
+        private static Color lineColor(JButton knopf) {
+            javax.swing.border.Border rand = knopf.getBorder();
+            rand = ((javax.swing.border.CompoundBorder) rand).getOutsideBorder();
+            return ((javax.swing.border.LineBorder) rand).getLineColor();
+        }
+
+        @Test
+        @DisplayName("unter kurzem Text steht keine tote Flaeche")
+        void unter_kurzem_text_keine_tote_flaeche() throws Exception {
+            // Der Textbereich waechst nur mit dem Text, damit der Rollbalken
+            // entstehen kann. Bei kurzem Text bleibt er deshalb niedrig, und
+            // darunter waere die Flaeche des Viewports zu sehen - die muss
+            // dieselbe sein wie die des Editors, sonst steht ein heller Streifen
+            // unter dem Text.
+            sqlArea.setSize(400, 400);
+            sqlArea.setText("select 1");
+            JScrollPane sp = field("scrollPane");
+            JViewport viewport = sp.getViewport();
+            Theme theme = field("aktuellesTheme");
+            assertEquals(sqlArea.getBackground(), viewport.getBackground(),
+                    "unter dem Text darf keine fremde Flaeche stehen");
+            assertEquals(theme.flaeche, viewport.getBackground(),
+                    "der Viewport traegt die Theme-Flaeche");
+            int zeilenhoehe = sqlArea.getFontMetrics(sqlArea.getFont()).getHeight();
+            assertEquals(16 * zeilenhoehe, sqlArea.getPreferredSize().height,
+                    "kurzer Text: der Bereich bleibt bei seinen 16 Zeilen");
+            // Die Breite bleibt bewusst frei, damit lange Zeilen waagerecht
+            // scrollen, statt ein Wort mitten drin umzubrechen.
+            assertFalse(sqlArea.getScrollableTracksViewportWidth(),
+                    "der Editor soll nicht mit der Fensterbreite mitwaachsen");
+        }
+
+        @Test
+        @DisplayName("der Editor nagelt die Viewport-Hoehe nicht fest")
+        void editor_nagelt_die_viewport_hoehe_nicht_fest() throws Exception {
+            // ViewportLayout setzt die Hoehe der Ansicht auf die des Viewports,
+            // sobald getScrollableTracksViewportHeight() 'ja' sagt. Waere das der
+            // Fall, bliebe der Textbereich immer so hoch wie das Fenster, es
+            // kaeme kein Rollbalken zustande, und die Zeilen unterhalb waeren im
+            // echten Fenster nicht erreichbar.
+            JTextComponent editor = field("sqlArea");
+            Class<?> editorKlasse = editor.getClass();
+            assertNotEquals(editorKlasse,
+                    editorKlasse.getMethod("getScrollableTracksViewportHeight")
+                            .getDeclaringClass(),
+                    "der Editor darf seine Hoehe nicht selbst an den Viewport binden");
+        }
+
+        @Test
+        @DisplayName("der Editor waechst mit dem Text, damit nichts unerreichbar wird")
+        void editor_waechst_mit_dem_text() throws Exception {
+            // Die bevorzugte Hoehe folgt der Zeilenzahl: nur so bekommt der
+            // Viewport eine Ansicht, die groesser ist als er selbst, und nur so
+            // entsteht ein Rollbalken.
+            sqlArea.setSize(400, 400);
+            sqlArea.setText("select 1\nfrom t");
+            int zeilenhoehe = sqlArea.getFontMetrics(sqlArea.getFont()).getHeight();
+            assertEquals(16 * zeilenhoehe, sqlArea.getPreferredSize().height,
+                    "zwei Zeilen passen noch in die 16 Zeilen des Startbereichs");
+            sqlArea.setText(vieleZeilen(200));
+            // Die Hoehe folgt den Zeilen, die der Text wirklich belegt, und die
+            // nennt erst der Zeilenkopf beim Zeichnen mit.
+            meldeBildschirmzeilen(400, 400);
+            assertTrue(sqlArea.getPreferredSize().height >= 200 * zeilenhoehe,
+                    "der Textbereich ist so hoch wie der Text, aktuell "
+                            + sqlArea.getPreferredSize().height);
+            // Der Bereich muss sich auch oeffnen duerfen - mit NEVER waeren die
+            // Zeilen zwar hoch, aber trotzdem unerreichbar.
+            JScrollPane sp = field("scrollPane");
+            assertEquals(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                    sp.getVerticalScrollBarPolicy(),
+                    "ohne Rollbalken bleibt der Text unter dem Fenster unerreichbar");
+        }
+
+        @Test
+        @DisplayName("eine umgebrochene Zeile bleibt bis zum Ende erreichbar")
+        void umbruch_bleibt_erreichbar() throws Exception {
+            // Zaehlt man Absaetze statt Bildschirmzeilen, ist der Bereich fuer
+            // eine umgebrochene Zeile zu kurz: der Text waere abgeschnitten und
+            // nicht erreichbar, weil die Zeilen, die der Umbruch braucht, gar
+            // keinen Platz bekommen.
+            int breite = 200;
+            // So lang, dass der Umbruch die 16 Startzeilen sprengt.
+            String lang = wiederhole("select 1 from tabelle ", 20);
+            sqlArea.setSize(breite, 200);
+            sqlArea.setText(lang + "\n");
+            meldeBildschirmzeilen(breite, 200);
+            int zeilenhoehe = sqlArea.getFontMetrics(sqlArea.getFont()).getHeight();
+            assertTrue(sqlArea.getPreferredSize().height > 16 * zeilenhoehe,
+                    "die " + zeilenBeiUmbruch(lang, breite)
+                            + " Bildschirmzeilen brauchen mehr als die 16 Startzeilen, "
+                            + "sonst waeren sie unerreichbar");
+        }
+
+        @Test
+        @DisplayName("die Statuszeile zaehlt die Bildschirmzeilen, nicht die Absaetze")
+        void umfang_zaehlt_bildschirmzeilen() throws Exception {
+            int breite = 200;
+            String lang = wiederhole("select 1 from tabelle ", 6);
+            String t = lang + "\nselect 2\n";
+            sqlArea.setSize(breite, 200);
+            sqlArea.setText(t);
+            meldeBildschirmzeilen(breite, 200);
+            int zeilen = bemalteZahlen(breite, 200);
+            assertEquals(zeilen + " Zeilen, " + t.length() + " Zeichen",
+                    ((JLabel) field("umfangLabel")).getText(),
+                    "die lange Zeile bricht um und gehoert mehrfach mit");
+        }
+
+        @Test
+        @DisplayName("unten und rechts steht der Text nicht am Rahmen")
+        void unten_und_rechts_luft() {
+            // Sobald ein Rollbalken auftaucht, klebt die letzte Zeile sonst an ihm.
+            java.awt.Insets rand = sqlArea.getMargin();
+            assertEquals(9, rand.bottom, "unten haengt der Text nicht am Rollbalken");
+            assertEquals(9, rand.right, "rechts haengt der Text nicht am Rollbalken");
+        }
+
+        private String vieleZeilen(int anzahl) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < anzahl; i++) {
+                sb.append("select ").append(i).append("\n");
+            }
+            return sb.toString();
+        }
+
+        @Test
+        @DisplayName("die drei Aktionen tragen ein Symbol, die Links keines")
+        void aktionen_tragen_symbole() {
+            for (JButton knopf : List.of(readButton, formatButton, writeButton)) {
+                assertNotNull(knopf.getIcon(),
+                        () -> "'" + knopf.getText() + "' hat kein Symbol");
+                assertTrue(knopf.getIcon().getIconWidth() > 0
+                                && knopf.getIcon().getIconHeight() > 0,
+                        () -> "'" + knopf.getText() + "' hat ein leeres Symbol");
+            }
+            // Links tragen keins: dort ist der Text das Erkennungsmerkmal.
+            assertNull(exitButton.getIcon(), "der Beenden-Link traegt ein Symbol");
+            assertNotNull(themeButton.getIcon(), "der Theme-Schalter traegt ein Symbol");
+        }
+
+        @Test
+        @DisplayName("das Symbol nimmt die Textfarbe des Knopfes an")
+        void symbol_teilt_die_beschriftungsfarbe() {
+            // Bei gesperrten Knoepfen wird die Beschriftung gedimmt; ein
+            // eigenstaendig eingefaerbtes Symbol wuerde dann heller wirken als
+            // der Text daneben und die Sperre undermine.
+            for (JButton knopf : List.of(formatButton, writeButton)) {
+                assertNotNull(knopf.getIcon(), () -> "'" + knopf.getText() + "'");
+                // paintIcon liest die Foreground des Zeichners, nicht die des
+                // Knopfes - genau deshalb wird hier die Beschriftung gesetzt
+                // und danach die Farbe des Symbols geprueft.
+                java.awt.image.BufferedImage puffer = new java.awt.image.BufferedImage(
+                        20, 20, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                knopf.getIcon().paintIcon(knopf, puffer.getGraphics(), 0, 0);
+                boolean gemalt = false;
+                for (int y = 0; y < 20 && !gemalt; y++) {
+                    for (int x = 0; x < 20; x++) {
+                        if ((puffer.getRGB(x, y) >>> 24) > 0) {
+                            gemalt = true;
+                            break;
+                        }
+                    }
+                }
+                assertTrue(gemalt, () -> "'" + knopf.getText() + "' malt nichts");
+            }
+        }
+
+        @Test
+        @DisplayName("Zeilen und Zeichen werden mitgezaehlt")
+        void umfang_wird_angezeigt() {
+            sqlArea.setText("");
+            assertEquals("0 Zeilen, 0 Zeichen", umfangLabel.getText());
+
+            sqlArea.setText("a\nbb\nccc");
+            assertEquals("3 Zeilen, 8 Zeichen", umfangLabel.getText());
+
+            sqlArea.setText("nur eine");
+            assertEquals("1 Zeile, 8 Zeichen", umfangLabel.getText(),
+                    "bei einer Zeile steht etwas anderes als in der Mehrzahl");
         }
 
         @Test
@@ -668,10 +1018,16 @@ class FormatterPanelTest {
                 pruefe(theme, theme.erfolg, theme.hintergrund, "Erfolg", maengel);
                 pruefe(theme, theme.warnung, theme.hintergrund, "Warnung", maengel);
                 pruefe(theme, theme.fehler, theme.hintergrund, "Fehler", maengel);
-                // Beschriftung auf Schaltflaeche
-                pruefe(theme, theme.aufAkzent, theme.akzent, "Beschriftung Akzent", maengel);
-                pruefe(theme, theme.aufSekundaer, theme.sekundaer, "Beschriftung sekundaer", maengel);
-                pruefe(theme, theme.aufDeaktiviert, theme.deaktiviert, "Beschriftung gesperrt", maengel);
+                // Beschriftung auf Schaltflaeche. Gesperrt wird nicht mehr ueber
+                // eine eigene Farbe geprueft, sondern ueber die entschaerfte
+                // Eigenfarbe - und die ist fuer jede Aktion eine andere.
+                pruefe(theme, theme.aufAkzent, theme.akzent, "Beschriftung Formatieren", maengel);
+                pruefe(theme, theme.akzentText, theme.hintergrund, "Beschriftung Einlesen", maengel);
+                pruefe(theme, theme.akzentText, theme.tonal, "Beschriftung Schreiben", maengel);
+                pruefe(theme, theme.aufDeaktiviert, theme.gesperrt(theme.akzent),
+                        "Beschriftung gesperrt Formatieren", maengel);
+                pruefe(theme, theme.aufDeaktiviert, theme.gesperrt(theme.tonal),
+                        "Beschriftung gesperrt Schreiben", maengel);
                 // Syntaxfarben auf der Editorflaeche
                 pruefe(theme, theme.keyword, theme.flaeche, "Keyword", maengel);
                 pruefe(theme, theme.stringFarbe, theme.flaeche, "String", maengel);
@@ -691,11 +1047,87 @@ class FormatterPanelTest {
         }
 
         @Test
+        @DisplayName("die Umrandung der Schaltflaechen erfuellt WCAG 1.4.11")
+        void schaltflaechen_sind_am_rand_erkennbar() {
+            // WCAG 1.4.11 verlangt 3:1 fuer die Erkennbarkeit einer
+            // Bedienoberflaeche - fuer die Flaeche oder ihre Begrenzung, nicht
+            // fuer beides. Der Test oben prueft nur Text auf Flaeche, und so
+            // konnten die Schaltflaechen voellig im Hintergrund verschwinden,
+            // ohne dass ein Wert auffiel: gemessen waren es 1,05:1 im hellen
+            // und 1,48:1 im dunklen Theme.
+            List<String> maengel = new ArrayList<>();
+            for (Theme theme : List.of(Theme.DUNKEL, Theme.HELL)) {
+                double r = contrast(theme.rahmen, theme.hintergrund);
+                if (r < 3.0) {
+                    maengel.add(theme.bezeichnung() + "/Rahmen=" + String.format("%.2f", r));
+                }
+            }
+            assertTrue(maengel.isEmpty(), () -> "Rahmen unter WCAG 1.4.11 (3:1): " + maengel);
+        }
+
+        @Test
+        @DisplayName("jede gefuellte Schaltflaeche traegt den Rahmen aus dem Theme")
+        void gefuellte_schaltflaechen_tragen_den_rahmen() {
+            // Fuelltext, damit alle drei aktiv sind: im gesperrten Zustand
+            // sind die Linien entschaerft und damit nicht vergleichbar.
+            sqlArea.setText("select 1");
+            // Die Palettenpruefung koennte gruen sein, waehrend das Panel den
+            // Rahmen gar nicht setzt. Dieser Test schliesst die Luecke
+            // zwischen "die Farbe existiert" und "sie ist am Button zu sehen".
+            for (JButton knopf : List.of(formatButton, readButton, writeButton)) {
+                assertTrue(knopf.isBorderPainted(),
+                        () -> "'" + knopf.getText() + "' hat keine sichtbare Umrandung");
+                javax.swing.border.Border rand = knopf.getBorder();
+                rand = ((javax.swing.border.CompoundBorder) rand).getOutsideBorder();
+                assertInstanceOf(javax.swing.border.LineBorder.class, rand,
+                        () -> "'" + knopf.getText() + "' hat keinen 1px-Rahmen");
+                // Die umrandete Stufe traegt die Akzentfarbe als Linie, weil
+                // ihre Flaeche nichts vom Fenster unterscheidet.
+                Color erwartet = knopf == readButton
+                        ? Theme.DUNKEL.akzentText
+                        : Theme.DUNKEL.rahmen;
+                assertEquals(erwartet, ((javax.swing.border.LineBorder) rand).getLineColor(),
+                        () -> "'" + knopf.getText() + "'");
+            }
+            // Beenden und der Theme-Schalter bleiben Links.
+            assertFalse(exitButton.isBorderPainted(), "Beenden bleibt ohne Rahmen");
+            assertTrue(themeButton.isBorderPainted(), "der Theme-Schalter hat einen Rahmen");
+        }
+
+        @Test
+        @DisplayName("Knopftext klebt nicht am Rand und die Flaeche ist erhaben")
+        void knopf_hat_innenabstand_und_fase() {
+            for (JButton knopf : List.of(formatButton, readButton, writeButton)) {
+                java.awt.Insets i = knopf.getBorder().getBorderInsets(knopf);
+                assertTrue(i.left >= 12 && i.right >= 12,
+                        () -> "'" + knopf.getText() + "' zu wenig Innenabstand: " + i);
+                assertTrue(i.top >= 4 && i.bottom >= 4,
+                        () -> "'" + knopf.getText() + "' zu wenig Innenabstand: " + i);
+            }
+            // Die Fase muss auch wirklich eine BevelBorder sein - sonst waere
+            // der Knopf flach mit einer Linie drumherum.
+            javax.swing.border.Border innen =
+                    ((javax.swing.border.CompoundBorder) formatButton.getBorder()).getInsideBorder();
+            javax.swing.border.Border fase =
+                    ((javax.swing.border.CompoundBorder) innen).getOutsideBorder();
+            assertInstanceOf(javax.swing.border.BevelBorder.class, fase, "der 3D-Effekt fehlt");
+            assertEquals(javax.swing.border.BevelBorder.RAISED,
+                    ((javax.swing.border.BevelBorder) fase).getBevelType());
+        }
+
+        @Test
+        @DisplayName("das Theme, mit dem die App startet, ist das helle")
+        void starttheme_ist_hell() {
+            assertEquals(Theme.HELL, FormatterPanel.STANDARD,
+                    "der Start muss im hellen Theme landen, nicht im dunklen");
+        }
+
+        @Test
         @DisplayName("Umschalter tauscht LookAndFeel und Farben")
         void umschalter_tauscht_lookandfeel_und_farben() throws Exception {
-            JButton themeButton = field("themeButton");
+            JToggleButton themeButton = field("themeButton");
             // Fuelltext noetig: ohne SQL ist der Formatier-Button gesperrt und
-            // traegt die Farbe fuer deaktiviert statt die Akzentfarbe.
+            // traegt die entschaerfte Farbe statt der eigenen.
             sqlArea.setText("select 1");
             assertInstanceOf(FlatDarkLaf.class, UIManager.getLookAndFeel());
             assertEquals(Theme.DUNKEL.akzent, formatButton.getBackground());
@@ -710,7 +1142,7 @@ class FormatterPanelTest {
         @Test
         @DisplayName("Umschalten ist umkehrbar")
         void umschalten_ist_umkehrbar() throws Exception {
-            JButton themeButton = field("themeButton");
+            JToggleButton themeButton = field("themeButton");
             sqlArea.setText("select 1");
             aufEdt(themeButton::doClick);
             aufEdt(themeButton::doClick);
@@ -719,11 +1151,26 @@ class FormatterPanelTest {
         }
 
         @Test
-        @DisplayName("der Schalter benennt das Ziel, nicht den Zustand")
-        void schalter_benennt_das_ziel() throws Exception {
-            JButton themeButton = field("themeButton");
-            assertTrue(themeButton.getText().contains("Hell"),
-                    "im dunklen Theme muss der Schalter zum hellen Theme fuehren");
+        @DisplayName("der Schalter zeigt den Zustand, Text und Symbol das Ziel")
+        void schalter_zeigt_zustand_und_ziel() throws Exception {
+            // Der Testaufbau startet im dunklen Theme: der Schalter ist an,
+            // Text und Symbol zeigen aber nach Hell.
+            JToggleButton themeButton = field("themeButton");
+            assertTrue(themeButton.isSelected(), "im dunklen Theme ist der Schalter an");
+            assertEquals("Hell", themeButton.getText(), "der Text nennt das Ziel");
+            Icon mond = themeButton.getIcon();
+            assertNotNull(mond, "vor dem Text steht ein Symbol");
+            assertEquals(Theme.DUNKEL.aufAkzent, themeButton.getForeground(),
+                    "im dunklen Theme steht die Beschriftung in Weiss");
+
+            sqlArea.setText("select 1");
+            aufEdt(themeButton::doClick);
+            assertFalse(themeButton.isSelected(), "nach dem Umschalten ist der Schalter aus");
+            assertEquals("Dunkel", themeButton.getText(), "der Text nennt das neue Ziel");
+            assertNotSame(mond, themeButton.getIcon(), "das Symbol wechselt mit");
+            assertInstanceOf(FlatLightLaf.class, UIManager.getLookAndFeel());
+            assertTrue(contrast(themeButton.getForeground(), panel.getBackground()) >= 4.5,
+                    "auch im hellen Theme bleibt die Beschriftung lesbar");
             assertNotNull(themeButton.getToolTipText());
         }
     }
@@ -911,7 +1358,134 @@ class FormatterPanelTest {
         return sqlArea.getText().indexOf(teil, ab);
     }
 
-    private StyledDocument document() {
+      @Nested
+      @DisplayName("Tastatur und Screenreader")
+      class Bedienbarkeit {
+
+          @Test
+          @DisplayName("jede Aktion hat ein Tastenkuerzel")
+          void aktionen_haben_tastenkuerzel() {
+              // Ohne Mnemonik gibt es keinen Weg an die Buttons, ohne 200 Mal
+              // mit Tab durch den Text zu gehen.
+              for (JButton button : new JButton[]{
+                      readButton, formatButton, writeButton, exitButton}) {
+                  assertTrue(button.getMnemonic() > 0,
+                          button.getText() + " hat kein Tastenkuerzel");
+                  assertTrue(button.isFocusable(),
+                          button.getText() + " ist nicht an der Tastatur erreichbar");
+              }
+              // Alt+E, Alt+F, Alt+L und Alt+C doppeln sich nicht.
+              Set<Integer> kuerzel = new HashSet<>();
+              for (JButton button : new JButton[]{
+                      readButton, formatButton, writeButton, exitButton}) {
+                  assertTrue(kuerzel.add(button.getMnemonic()),
+                          "Tastenkuerzel " + button.getMnemonic() + " ist zweimal vergeben");
+              }
+          }
+
+          @Test
+          @DisplayName("der Fokusring hebt sich vom Knopfgrund ab")
+          void fokusring_hebt_sich_ab() throws Exception {
+              // Ein Ring, den man nicht sieht, ist keiner. FlatLafs Standardring
+              // laege auf dem blauen Hauptknopf bei 1,1:1 - das ist der Grund,
+              // warum die Knoepfe ihren Ring selbst zeichnen.
+              sqlArea.setText("select 1 from t");
+              for (Theme theme : new Theme[]{Theme.DUNKEL, Theme.HELL}) {
+                  FormatterPanel.setzeTheme(theme);
+                  for (JButton button : new JButton[]{
+                          readButton, formatButton, writeButton, exitButton}) {
+                      if (!button.isEnabled()) {
+                          continue;
+                      }
+                      Field ring = button.getClass().getDeclaredField("ring");
+                      ring.setAccessible(true);
+                      Color ringFarbe = (Color) ring.get(button);
+                      // Der Link ist nicht gefuellt, er liegt auf dem Fenster.
+                      Color grund = button.isOpaque() ? button.getBackground()
+                              : panel.getBackground();
+                      double verhaeltnis = contrast(ringFarbe, grund);
+                      assertTrue(verhaeltnis >= 3.0,
+                              (theme.isDunkel() ? "dunkel" : "hell") + ": Ring "
+                                      + ringFarbe + " auf " + grund + " nur "
+                                      + String.format("%.1f", verhaeltnis) + ":1");
+                  }
+              }
+          }
+
+          @Test
+          @DisplayName("das Textfeld und der Theme-Schalter haben Namen")
+          void textfeld_und_thema_haben_namen() throws Exception {
+              // Fuer einen Screenreader ist "TextArea" sonst alles, was es weiss.
+              assertEquals("SQL-Text", sqlArea.getAccessibleContext().getAccessibleName());
+              assertNotNull(sqlArea.getAccessibleContext().getAccessibleDescription(),
+                      "das Textfeld erklaert nicht, was mit ihm passiert");
+              assertEquals("Theme-Schalter",
+                      themeButton.getAccessibleContext().getAccessibleName());
+          }
+
+          @Test
+          @DisplayName("die Dialektbeschriftung gehoert zum Auswahlfeld")
+          void beschriftung_gehoert_zum_auswahlfeld() throws Exception {
+              JLabel beschriftung = field("dialectLabel");
+              assertSame(dialectCombo, beschriftung.getLabelFor(),
+                      "die Beschriftung gehoert zum Auswahlfeld, nicht nur daneben");
+              assertEquals("SQL-Dialekt",
+                      dialectCombo.getAccessibleContext().getAccessibleName());
+          }
+
+          @Test
+          @DisplayName("der Fokus am Theme-Schalter haengt an der Akzentfarbe")
+          void fokus_am_thema_schalter_bleibt_sichtbar() throws Exception {
+              // Der Schalter malt sich selbst und schaltet den Fokusrahmen des
+              // LookAndFeel ab. Ohne eigenen Ring waere er fuer die Tastatur
+              // unsichtbar unsichtbar: man wuesste nicht, wo man ist.
+              assertFalse(themeButton.isFocusPainted(),
+                      "der LookAndFeel soll den Fokus nicht doppelt malen");
+              assertTrue(themeButton.isFocusable(),
+                      "der Schalter muss den Fokus bekommen koennen");
+
+              // Geprueft wird die Farbe, mit der der Ring gestrichen wird: sie
+              // muss die Akzentfarbe des aktiven Themes sein, sonst waere der
+              // Ring auf dunklem Grund kaum zu sehen.
+              Field ring = themeButton.getClass().getDeclaredField("ring");
+              ring.setAccessible(true);
+              Theme theme = field("aktuellesTheme");
+              assertEquals(theme.akzent, ring.get(themeButton),
+                      "der Fokusring nimmt nicht die Akzentfarbe des Themes an");
+          }
+
+          @Test
+          @DisplayName("mit Fokus steht der Ring im Bild, ohne nicht")
+          void fokusring_wird_gemalt() throws Exception {
+              // Der gemalte Ring laesst sich nur pruefen, wenn das Testfenster
+              // den Fokus wirklich annehmen darf - unter macOS verweigert das
+              // System das einem Hintergrundprozess. Dann ueberspringen statt
+              // gruen zu melden.
+              aufEdt(() -> themeButton.requestFocusInWindow());
+              assumeTrue(themeButton.hasFocus(),
+                      "dieses Fenster kann den Fokus nicht halten - Ring nicht pruefbar");
+
+              themeButton.setSize(200, 44);
+              java.awt.image.BufferedImage mitFokus = new java.awt.image.BufferedImage(200, 44,
+                      java.awt.image.BufferedImage.TYPE_INT_RGB);
+              themeButton.paint(mitFokus.getGraphics());
+
+              aufEdt(() -> themeButton.setFocusable(false));
+              assertFalse(themeButton.hasFocus(), "Voraussetzung: Fokus ist weg");
+              java.awt.image.BufferedImage ohneFokus = new java.awt.image.BufferedImage(200, 44,
+                      java.awt.image.BufferedImage.TYPE_INT_RGB);
+              themeButton.paint(ohneFokus.getGraphics());
+              aufEdt(() -> themeButton.setFocusable(true));
+
+              Theme theme = field("aktuellesTheme");
+              assertTrue(pixelVor(mitFokus, theme.akzent),
+                      "mit Fokus fehlt der Ring in " + theme.akzent);
+              assertFalse(pixelVor(ohneFokus, theme.akzent),
+                      "ohne Fokus darf kein Ring dastehen");
+          }
+      }
+
+      private StyledDocument document() {
         // getStyledDocument() sitzt auf JTextPane, nicht auf JTextComponent.
         return ((JTextPane) sqlArea).getStyledDocument();
     }
@@ -933,6 +1507,539 @@ class FormatterPanelTest {
 
     private void aufEdt(Runnable aktion) throws Exception {
         SwingUtilities.invokeAndWait(aktion);
+    }
+
+    /**
+     * Malt das Textfeld einmal, damit es seine Bildschirmzeilen meldet.
+     *
+     * <p>Das ist noetig, weil die Zeilenzahl beim Zeichnen gemeldet wird und
+     * nicht aus dem Dokument gelesen wird: nur der Text-View weiss, wie der
+     * Umbruch ausgefallen ist, und der weiss es erst, wenn er gelegt ist. Wer
+     * die Zahl vorher braucht, malt einmal - genau das passiert beim Oeffnen
+     * des Fensters auch.
+     */
+    private void meldeBildschirmzeilen(int breite, int hoehe) throws Exception {
+        aufEdt(() -> malen(sqlArea, breite, hoehe, sqlArea.getBackground()));
+    }
+
+    /**
+     * Malt das Textfeld in ein Bild, damit der Test Pixel zaehlen kann, statt
+     * sich vorzumachen, was der Nutzer sieht.
+     */
+    private java.awt.image.BufferedImage malen(JTextComponent feld, int breite, int hoehe,
+            Color hintergrund) {
+        feld.setSize(breite, hoehe);
+        java.awt.image.BufferedImage bild = new java.awt.image.BufferedImage(breite, hoehe,
+                java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = bild.createGraphics();
+        g.setColor(hintergrund);
+        g.fillRect(0, 0, breite, hoehe);
+        feld.paint(g);
+        g.dispose();
+        return bild;
+    }
+
+    /** Zaehlt die gemalten Streifen im Bild: einer je Zeile. */
+    private int bemalteZahlen(int breite, int hoehe) throws Exception {
+        meldeBildschirmzeilen(breite, hoehe);
+        java.awt.image.BufferedImage bild =
+                malen(sqlArea, breite, hoehe, sqlArea.getBackground());
+        return gemalteZeilen(bild, zahlenSpalte(breite, hoehe),
+                sqlArea.getBackground()).length;
+    }
+
+    private int[] gemalteZeilen(java.awt.image.BufferedImage bild, Rectangle streifen,
+            Color hintergrund) {
+        List<Integer> ys = new ArrayList<>();
+        boolean imStreifen = false;
+        for (int y = 0; y < streifen.height; y++) {
+            boolean bemalt = false;
+            for (int x = streifen.x; x < streifen.x + streifen.width && !bemalt; x++) {
+                bemalt = (bild.getRGB(x, y) & 0xFFFFFF)
+                        != (hintergrund.getRGB() & 0xFFFFFF);
+            }
+            if (bemalt && !imStreifen) {
+                ys.add(Integer.valueOf(y));
+            }
+            imStreifen = bemalt;
+        }
+        int[] out = new int[ys.size()];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = ys.get(i).intValue();
+        }
+        return out;
+    }
+
+    /**
+     * Sucht die oberste Zeile des Bildes im Streifen, die nicht die
+     * Hintergrundfarbe traegt, und liefert sie.
+     */
+    private int ersteGemalteZeile(java.awt.image.BufferedImage bild, Rectangle streifen,
+            Color hintergrund) {
+        int[] ys = gemalteZeilen(bild, streifen, hintergrund);
+        return ys.length == 0 ? -1 : ys[0];
+    }
+
+    /** Hoehe der n-ten gemalten Zeile im Streifen, 0 wenn es keine gibt. */
+    private int hoeheDerGemaltenZeile(java.awt.image.BufferedImage bild, Rectangle streifen,
+            Color hintergrund, int nummer) {
+        int[] ys = gemalteZeilen(bild, streifen, hintergrund);
+        return nummer >= 1 && nummer <= ys.length ? ys[nummer - 1] : -1;
+    }
+
+    /** Wie breit der Innenabstand links ist - dort stehen die Zahlen. */
+    private int zahlenRand() {
+        return sqlArea.getMargin().left;
+    }
+
+    /**
+     * Der Streifen, in dem nur die Zahlen stehen. Der Rand bleibt weg, sonst
+     * zaehlt der Streifen die Rundung des Rahmens mit.
+     */
+    private Rectangle zahlenSpalte(int breite, int hoehe) {
+        return new Rectangle(0, 0, zahlenRand() - 4, hoehe);
+    }
+
+    /**
+     * Der Streifen, in dem nur der Text steht. Erst eine Pixelzeile nach dem
+     * Innenabstand, damit die erste Lettere nicht beschnitten wird.
+     */
+    private Rectangle textSpalte(int breite, int hoehe) {
+        return new Rectangle(zahlenRand() + 1, 0, breite - zahlenRand() - 1, hoehe);
+    }
+
+    /**
+     * Wie weit darf die Zahl von ihrer Textzeile abweichen?
+     *
+     * <p>Zwei Pixel: eine Ziffer und ein Buchstabe haben nicht dieselbe Ober-
+     * und Unterkante, also ist die erste bemalte Pixelzeile nicht bei beiden
+     * gleich. Wichtig ist der Betrag, nicht der Einzelfall - ein Versatz, der
+     * mit jeder Zeile waechst, laeuft ueber diese Grenze hinaus.
+     */
+    private static final int ZEILEN_TOLERANZ = 2;
+
+    /**
+     * Prueft Bild gegen Bild: gleich viele Zahlen wie Textzeilen, und jede Zahl
+     * steht auf der Hoehe ihrer Zeile.
+     */
+    private void assertZahlenAufDenZeilen(int[] zahlen, int[] texte, String meldung) {
+        assertTrue(zahlen.length >= texte.length, meldung + ": " + texte.length
+                + " Textzeilen, aber nur " + zahlen.length + " Zahlen");
+        // Zusaetzliche Zahlen hinten sind leere Zeilen: die tragen eine Zahl,
+        // aber keine Schrift. Fehlt eine Zahl in der Mitte, rutschen alle
+        // folgenden um eine Zeile nach oben - genau das faellt unten auf.
+        for (int i = 0; i < texte.length; i++) {
+            int abweichung = Math.abs(zahlen[i] - texte[i]);
+            assertTrue(abweichung <= ZEILEN_TOLERANZ, meldung + ": Zeile " + (i + 1)
+                    + " steht " + abweichung + " Pixel daneben (" + zahlen[i]
+                    + " zu " + texte[i] + ")");
+        }
+    }
+
+    /** Zeichenbreite der Schrift im Textfeld. */
+    private int zeichenBreite() {
+        return sqlArea.getFontMetrics(sqlArea.getFont()).charWidth('0');
+    }
+
+    /** Wie viele Zeichen passen ohne Umbruch in ein Feld so breit? */
+    private int zeichenProZeile(int breite) {
+        java.awt.Insets rand = sqlArea.getMargin();
+        int nutzbreite = breite - rand.left - rand.right;
+        return Math.max(1, nutzbreite / zeichenBreite());
+    }
+
+    /**
+     * Wie viele Bildschirmzeilen braucht ein Text, der an Wortgrenzen umbricht?
+     *
+     * <p>Nachgechnet wird hier bewusst unabhaengig vom Text-View: der Test soll
+     * pruefen, ob die Zahlen zu dem passen, was der Umbruch ergibt - nicht
+     * nachrechnen, was der Umbruch ergibt. Gewechselt wird wie im Editor an den
+     * Leerzeichen, ein Wort wird nie in der Mitte getrennt.
+     */
+    private int zeilenBeiUmbruch(String text, int breite) {
+        int proZeile = zeichenProZeile(breite);
+        int zeilen = 1;
+        int laenge = 0;
+        for (String wort : text.split(" ")) {
+            if (wort.isEmpty()) {
+                continue;
+            }
+            int neu = laenge == 0 ? wort.length() : laenge + 1 + wort.length();
+            if (neu > proZeile && laenge > 0) {
+                zeilen++;
+                laenge = wort.length();
+            } else {
+                laenge = neu;
+            }
+        }
+        return zeilen;
+    }
+
+    /**
+     * Wie viele Bildschirmzeilen braucht eine Folge, die nicht umbricht? Nur
+     * brauchbar fuer Texte ohne Leerzeichen - alles andere nimmt
+     * {@link #zeilenBeiUmbruch(String, int)}.
+     */
+    private int zeilenOhneUmbruch(int zeichen, int breite) {
+        int proZeile = zeichenProZeile(breite);
+        return (zeichen + proZeile - 1) / proZeile;
+    }
+
+    private String wiederhole(String stueck, int mal) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < mal; i++) {
+            sb.append(stueck);
+        }
+        return sb.toString();
+    }
+
+    @Nested
+    @DisplayName("Ecken")
+    class Ecken {
+
+        @Test
+        @DisplayName("der Textbereich malt wirklich runde Ecken")
+        void editor_hat_runde_ecken() {
+            // Geprueft wird nicht die Rahmenart, sondern das Bild: die Ecke
+            // links oben muss frei bleiben, waehrend die Oberkante gezeichnet
+            // ist. Ein eckiger Rahmen wuerde beides bemalen.
+            java.awt.image.BufferedImage bild =
+                    new java.awt.image.BufferedImage(40, 40, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            sqlArea.setSize(40, 40);
+            sqlArea.paint(bild.getGraphics());
+            assertEquals(0, bild.getRGB(0, 0) & 0xFFFFFF, "die Ecke links oben bleibt frei");
+            assertNotEquals(0, bild.getRGB(20, 0) & 0xFFFFFF, "die Oberkante ist gezeichnet");
+        }
+
+        @Test
+        @DisplayName("der Text im Textfeld haengt nicht an der Fase")
+        void text_hat_innenabstand() {
+            java.awt.Insets rand = sqlArea.getMargin();
+            assertEquals(9, rand.top, "oben haengt der Text nicht an der Fase");
+            // Links ist es breiter als die Fase: dort stehen die Zahlen, und die
+            // duerfen den Text nicht beruehren.
+            assertTrue(rand.left >= 20,
+                    "links ist Platz fuer die Zahlen, aktuell " + rand.left);
+        }
+
+        @Test
+        @DisplayName("das Textfeld hat schwarzen Rahmen und Fase wie die Knoepfe")
+        void textfeld_hat_scharfen_rahmen_und_fase() throws Exception {
+            javax.swing.border.Border rand =
+                    ((javax.swing.JPanel) field("editorCard")).getBorder();
+            javax.swing.border.LineBorder linie =
+                    (javax.swing.border.LineBorder)
+                            ((javax.swing.border.CompoundBorder) rand).getOutsideBorder();
+            assertEquals(Color.BLACK, linie.getLineColor(), "der Rahmen ist schwarz");
+
+            javax.swing.border.Border phase =
+                    ((javax.swing.border.CompoundBorder) rand).getInsideBorder();
+            assertInstanceOf(javax.swing.border.BevelBorder.class, phase,
+                    "das Textfeld traegt die Fase der Knoepfe");
+            assertEquals(javax.swing.border.BevelBorder.RAISED,
+                    ((javax.swing.border.BevelBorder) phase).getBevelType(),
+                    "die Fase steht vor wie an den Knoepfen");
+        }
+
+        @Test
+        @DisplayName("Knoepfe und Textfeld runden gleich")
+        void knoepfe_und_textfeld_runden_gleich() throws Exception {
+            javax.swing.border.Border amKnoepf =
+                    ((javax.swing.border.CompoundBorder) formatButton.getBorder()).getOutsideBorder();
+            javax.swing.border.Border amFeld = ((javax.swing.border.CompoundBorder)
+                    ((javax.swing.JPanel) field("editorCard")).getBorder()).getOutsideBorder();
+              assertEquals(amKnoepf.getClass(), amFeld.getClass(),
+                      "Buttons und Textfeld muessen dieselbe Eckenbehandlung teilen");
+          }
+
+          @Test
+          @DisplayName("der Theme-Schalter malt seine Beschriftung selbst")
+          void thema_schalter_malt_selbst() throws Exception {
+              // FlatLaf malt die Beschriftung eines aktiven Tasters in einer
+              // eigenen Farbe; "Hell" stand dann dunkel auf mittelgrau. Geprueft
+              // wird deshalb das Bild: im dunklen Theme muss die Beschriftung in
+              // Weiss gezeichnet sein, im hellen in der Textfarbe.
+              sqlArea.setText("select 1");
+              beschriftung_erscheint_in_der_textfarbe("Hell", Theme.DUNKEL);
+              aufEdt(themeButton::doClick);
+              beschriftung_erscheint_in_der_textfarbe("Dunkel", Theme.HELL);
+          }
+
+          /**
+           * Prueft, dass der Schalter die Beschriftung wirklich in der Textfarbe
+           * des Themes zeichnet und der LookAndFeel sie nicht uebermalt.
+           */
+          private void beschriftung_erscheint_in_der_textfarbe(
+                  String beschriftung, Theme theme) throws Exception {
+              assertEquals(beschriftung, themeButton.getText(),
+                      "der Schalter nennt das Ziel");
+              themeButton.setSize(200, 44);
+              java.awt.image.BufferedImage bild =
+                      new java.awt.image.BufferedImage(200, 44,
+                              java.awt.image.BufferedImage.TYPE_INT_RGB);
+              themeButton.paint(bild.getGraphics());
+              Color farbe = themeButton.getForeground();
+              assertEquals(theme.isDunkel() ? theme.aufAkzent : theme.text, farbe,
+                      "die Beschriftung hat die Textfarbe des Themes");
+              assertTrue(contrast(farbe, panel.getBackground()) >= 4.5,
+                      "die Beschriftung hebt sich vom Fenster ab");
+              assertTrue(kommtVor(bild, farbe),
+                      "im gemalten Bild steht die Textfarbe " + farbe
+                              + " - der LookAndFeel faerbt die Beschriftung sonst selbst");
+          }
+
+          private boolean kommtVor(java.awt.image.BufferedImage bild, Color farbe) {
+              return pixelVor(bild, farbe);
+          }
+      }
+
+      /** Zaehlt, ob eine Farbe wirklich im gemalten Bild auftaucht. */
+      private static boolean pixelVor(java.awt.image.BufferedImage bild, Color farbe) {
+          for (int y = 0; y < bild.getHeight(); y++) {
+              for (int x = 0; x < bild.getWidth(); x++) {
+                  if ((bild.getRGB(x, y) & 0xFFFFFF) == (farbe.getRGB() & 0xFFFFFF)) {
+                      return true;
+                  }
+              }
+          }
+          return false;
+      }
+
+      @Nested
+    @DisplayName("Zeilennummern")
+    class ZeilennummernTest {
+
+        @Test
+        @DisplayName("die Zahlen stehen im Textfeld, nicht in einer eigenen Spalte")
+        void zahlen_stehen_im_textfeld() throws Exception {
+            // Eine eigene Spalte waere eine zweite Komponente neben dem Text. Die
+            // muesste bei jedem Tastendruck ausdruecklich mitgerufen werden und
+            // haette eigene Rollkoordinaten - beides faellt hier weg, weil Zahl
+            // und Text aus demselben View in dasselbe Bild gezeichnet werden.
+            JScrollPane sp = field("scrollPane");
+            assertNull(sp.getRowHeader(),
+                    "die Zahlen gehoeren ins Textfeld, nicht daneben");
+            assertTrue(zahlenRand() >= 20,
+                    "links ist Platz fuer die Zahlen, aktuell " + zahlenRand());
+        }
+
+        @Test
+        @DisplayName("es steht eine Zahl fuer jede Zeile")
+        void eine_zahl_pro_zeile() throws Exception {
+            // Das Textfeld braucht eine Groesse: ohne sie liefert der Text keine
+            // Positionen, und die Zahlen bleiben aus.
+            sqlArea.setText("select 1\nfrom t\nwhere a = 1\n");
+            sqlArea.setSize(300, 200);
+            assertEquals(4, bemalteZahlen(300, 200),
+                    "drei Zeilen plus die leere letzte bekommen je eine Zahl");
+        }
+
+        @Test
+        @DisplayName("die Zahlen stehen auf der Grundlinie ihrer Textzeile")
+        void zahlen_auf_grundlinie_der_zeile() throws Exception {
+            // Geprueft wird Bild gegen Bild: die Zahl muss auf genau derselben
+            // Pixelzeile stehen wie der Text. Genau daran ist es bisher
+            // gescheitert - die Zahl stand im Takt und lief beim Blaettern
+            // auseinander.
+            sqlArea.setText("AAA\nBBB\nCCC\n");
+            sqlArea.setSize(300, 200);
+            meldeBildschirmzeilen(300, 200);
+            java.awt.image.BufferedImage bild =
+                    malen(sqlArea, 300, 200, sqlArea.getBackground());
+            int[] zahlen = gemalteZeilen(bild, zahlenSpalte(300, 200),
+                    sqlArea.getBackground());
+            int[] texte = gemalteZeilen(bild, textSpalte(300, 200),
+                    sqlArea.getBackground());
+            assertTrue(zahlen.length >= 3, "die ersten drei Zahlen sind da: "
+                    + zahlen.length);
+            assertZahlenAufDenZeilen(zahlen, texte, "die Zahlen stehen auf den Zeilen");
+        }
+
+        @Test
+        @DisplayName("Tippen erneuert die Zahlen ohne Klick")
+        void tippen_erneuert_die_zahlen() throws Exception {
+            // Der Fehler aus der Praxis: die Zahlen erschienen erst, wenn man in
+            // das Fenster klickte. Ursache war eine eigene Spalte, die nur bei
+            // Klick neu gezeichnet wurde. Jetzt zeichnet das Textfeld die Zahlen
+            // im selben Zug wie den Text.
+            sqlArea.setSize(300, 200);
+            sqlArea.setText("select 1\n");
+            meldeBildschirmzeilen(300, 200);
+            int vorher = bemalteZahlen(300, 200);
+            // Wie ein Tastendruck: eine Zeile einfuegen, nicht setText.
+            aufEdt(() -> {
+                try {
+                    sqlArea.getDocument().insertString(9, "from t\n", null);
+                } catch (javax.swing.text.BadLocationException ex) {
+                    throw new IllegalStateException(ex);
+                }
+            });
+            // Ohne Klick, ohne Maus, ohne Tastendruck: nur neu malen.
+            int nachher = bemalteZahlen(300, 200);
+            assertEquals(vorher + 1, nachher,
+                    "die neue Zeile hat sofort eine Zahl, auch ohne Klick ins Fenster");
+        }
+
+        @Test
+        @DisplayName("eine umgebrochene Zeile bekommt je Bildschirmzeile eine Zahl")
+        void umgebrochene_zeile_bekommt_mehr_zahlen() throws Exception {
+            // Weicher Umbruch, wie ihn das Textfeld mit 84 Zeichen Breite macht:
+            // eine lange Zeile braucht mehrere Bildschirmzeilen und damit
+            // mehrere Zahlen. Zaehlt man stattdessen die Absaetze, fehlt unter
+            // dem umbrochenen Text eine Zahl.
+            int breite = 200;
+            String lang = wiederhole("select 1 from tabelle ", 6);
+            sqlArea.setSize(breite, 200);
+            sqlArea.setText(lang + "\nselect 2\n");
+            meldeBildschirmzeilen(breite, 200);
+            java.awt.image.BufferedImage bild =
+                    malen(sqlArea, breite, 400, sqlArea.getBackground());
+            int[] zahlen = gemalteZeilen(bild, zahlenSpalte(breite, 400),
+                    sqlArea.getBackground());
+            int[] texte = gemalteZeilen(bild, textSpalte(breite, 400),
+                    sqlArea.getBackground());
+            assertZahlenAufDenZeilen(zahlen, texte,
+                    "jeder Teil der langen Zeile hat eine Zahl");
+            assertTrue(zahlen.length > 3, "der Test prueft wirklich eine umgebrochene Zeile, "
+                    + "sonst waere er leer: nur " + zahlen.length + " Zahlen");
+        }
+
+        @Test
+        @DisplayName("eine lange letzte Zeile ohne Zeilenende zaehlt alle ihre Teile")
+        void lange_letzte_zeile_ohne_zeilenende() throws Exception {
+            // Der haeufigste Fall aus der Praxis: ein langer SQL-Block, der als
+            // letztes ohne Zeilenende endet und deshalb am Ende umbricht. Beim
+            // Zaehlen der Absaetze endet die letzte Zahl dort, wo die Zeile
+            // angefaengt hat - der Rest steht dann ohne Zahl da.
+            int breite = 200;
+            String lang = wiederhole("select 1 from tabelle ", 20);
+            sqlArea.setSize(breite, 900);
+            sqlArea.setText("select 1\n" + lang);
+            meldeBildschirmzeilen(breite, 900);
+            java.awt.image.BufferedImage bild =
+                    malen(sqlArea, breite, 900, sqlArea.getBackground());
+            int[] zahlen = gemalteZeilen(bild, zahlenSpalte(breite, 900),
+                    sqlArea.getBackground());
+            int[] texte = gemalteZeilen(bild, textSpalte(breite, 900),
+                    sqlArea.getBackground());
+            assertZahlenAufDenZeilen(zahlen, texte,
+                    "jeder Teil der letzten langen Zeile hat eine Zahl");
+            assertTrue(zahlen.length > 20, "der Test prueft wirklich eine lange Zeile: nur "
+                    + zahlen.length + " Zahlen");
+        }
+
+        @Test
+        @DisplayName("die Zahlen stehen beim Umbruch auf der Hoehe ihrer Bildschirmzeile")
+        void zahlen_bei_umbruch_auf_der_hoehe() throws Exception {
+            // Beim Blaettern duerfen die Zahlen nicht hinterherlaufen: die Zahl
+            // der fuenften Bildschirmzeile steht auf deren Hoehe, auch wenn sie
+            // der zweite Teil eines einzigen Absatzes ist.
+            int breite = 200;
+            String lang = wiederhole("select 1 from tabelle ", 6);
+            sqlArea.setSize(breite, 400);
+            sqlArea.setText(lang + "\n");
+            meldeBildschirmzeilen(breite, 400);
+            // Verglichen wird mit den Zeilen, die der Text an derselben Stelle
+            // wirklich malt, nicht mit einer gerechneten Hoehe: die Zeilen liegen
+            // nicht genau auf dem Zeilenabstand der Schrift, sondern so, wie der
+            // Text-View sie legt. Geprueft wird jede einzelne - eine Zahl, die
+            // erst ab der fuenften Zeile danebenliegt, faellt auch auf.
+            java.awt.image.BufferedImage bild =
+                    malen(sqlArea, breite, 400, sqlArea.getBackground());
+            int[] zahlen = gemalteZeilen(bild, zahlenSpalte(breite, 400),
+                    sqlArea.getBackground());
+            int[] texte = gemalteZeilen(bild, textSpalte(breite, 400),
+                    sqlArea.getBackground());
+            assertZahlenAufDenZeilen(zahlen, texte,
+                    "auch tief unten im Umbruch steht die Zahl auf ihrer Zeile");
+            assertTrue(zahlen.length > 5, "der Test prueft wirklich mehrere Bildschirmzeilen "
+                    + "eines Absatzes: nur " + zahlen.length + " Zahlen");
+        }
+
+        @Test
+        @DisplayName("kein Text steht ohne Zahl daneben")
+        void keine_zeile_ohne_zahl() throws Exception {
+            // Der Befund aus der Praxis war: Zahlen 1 bis 22, darunter weitere
+            // Zeilen ohne jede Zahl. Geprueft wird deshalb zeilenweise, dass jede
+            // gemalte Textzeile auch eine Zahl hat und auf gleicher Hoehe steht.
+            int breite = 240;
+            sqlArea.setSize(breite, 1200);
+            StringBuilder sql = new StringBuilder();
+            for (int i = 1; i <= 120; i++) {
+                sql.append("select ").append(i).append(" from tabelle where a = 1\n");
+            }
+            sqlArea.setText(sql.toString());
+            meldeBildschirmzeilen(breite, 1200);
+            java.awt.image.BufferedImage bild =
+                    malen(sqlArea, breite, 1200, sqlArea.getBackground());
+            int[] zahlen = gemalteZeilen(bild, zahlenSpalte(breite, 1200),
+                    sqlArea.getBackground());
+            int[] texte = gemalteZeilen(bild, textSpalte(breite, 1200),
+                    sqlArea.getBackground());
+            assertZahlenAufDenZeilen(zahlen, texte, "jede Textzeile hat eine Zahl");
+        }
+
+        @Test
+        @DisplayName("die Zahlen nehmen die Farbe des Themes an")
+        void zahlen_in_theme_farbe() throws Exception {
+            Color zahlen = editorFeldFarbe("zahlenFarbe");
+            assertEquals(Theme.DUNKEL.gedaempft, zahlen,
+                    "die Zahlen sind zurueckhaltend, nicht so stark wie der Text");
+            assertTrue(contrast(zahlen, panel.getBackground()) >= 4.5,
+                    "die Zahlen bleiben im dunklen Theme lesbar");
+            aufEdt(themeButton::doClick);
+            assertEquals(Theme.HELL.gedaempft, editorFeldFarbe("zahlenFarbe"),
+                    "nach dem Wechsel ziehen die Zahlen mit");
+            assertTrue(contrast(editorFeldFarbe("zahlenFarbe"), panel.getBackground()) >= 4.5,
+                    "und bleiben im hellen Theme lesbar");
+        }
+
+        private Color editorFeldFarbe(String name) throws Exception {
+            java.lang.reflect.Field f = sqlArea.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            return (Color) f.get(sqlArea);
+        }
+
+    }
+
+    @Nested
+    @DisplayName("Typografie")
+    class Typografie {
+
+        @Test
+        @DisplayName("der Produktname steht nicht zweimal im Fenster")
+        void name_steht_nicht_zweimal() {
+            // Der Fenstertitel traegt "SQL Clipboard Formatter". Ein zweiter
+            // Titel im Fenster wiederholte ihn nur und kostete Hoehe, die der
+            // Textbereich gebraucht.
+            List<String> texte = new ArrayList<>();
+            sammleTexte(panel, texte);
+            for (String t : texte) {
+                assertFalse(t.contains("SQL Formatter") || t.contains("SQL Clipboard Formatter"),
+                        () -> "der Produktname steht noch im Fenster: '" + t + "'");
+            }
+        }
+
+        private void sammleTexte(java.awt.Container c, List<String> ziel) {
+            for (java.awt.Component k : c.getComponents()) {
+                if (k instanceof javax.swing.JLabel l) {
+                    ziel.add(l.getText());
+                }
+                if (k instanceof java.awt.Container kc) {
+                    sammleTexte(kc, ziel);
+                }
+            }
+        }
+
+        @Test
+        @DisplayName("die Versionszeile ist kleiner als die Statuszeile")
+        void version_ist_dezenter_als_status() throws Exception {
+            JLabel version = field("versionLabel");
+            JLabel status = field("statusLabel");
+            assertTrue(version.getFont().getSize() < status.getFont().getSize(),
+                    () -> "Version " + version.getFont().getSize()
+                            + " ist nicht kleiner als Status " + status.getFont().getSize());
+        }
     }
 
     private static double contrast(Color a, Color b) {

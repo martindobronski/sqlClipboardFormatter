@@ -1,0 +1,42 @@
+# start.conf.example - Vorlage fuer start.local.conf
+#
+# Diese Datei gehoert neben start.sh und start.bat, wird aber nur zum
+# Kopieren benutzt. Die Kopie heisst start.local.conf, steht in der
+# .gitignore und wird nicht eingecheckt. Deshalb koennen hier ruhig echte
+# Pfade stehen, ohne dass sie in die Historie wandern.
+#
+# So wird die Kopie angelegt:
+#
+#   cp start.conf.example start.local.conf
+#
+# Alles nach einem # ist Kommentar. Leere Zeilen sind erlaubt. Alles, was
+# nicht "name=wert" ist, wird ignoriert - ein Tippfehler stoert also
+# niemanden, es wird nur nicht wirksam.
+#
+# WICHTIG: Als ANSI bzw. UTF-8 OHNE BOM speichern. Ein BOM aus dem Editor
+# macht aus dem Namen des ersten Eintrags Muell, und der erste Eintrag
+# waere dann still wirkungslos. Umlaute im Pfad funktionieren nur bei ANSI;
+# bei UTF-8 liest cmd.exe die Datei als ANSI und der Pfad stimmt nicht mehr.
+#
+# Es sind keine Anfuehrungszeichen noetig. Alles hinter dem ersten = ist
+# der Wert, Leerzeichen sind erlaubt. "C:\Program Files\..." ist also
+# einfach eintragbar.
+
+# Java, mit dem die App startet. Ein JDK 17 oder neuer.
+# Leer lassen, um die normale Suche zu benutzen. In einem entpackten
+# Release-ZIP hat die mitgelieferte Laufzeit in jre/ immer Vorrang - dieser
+# Wert wird nur beim Bauen aus dem Quelltext benutzt, wo es kein jre/ gibt.
+#java=C:\Program Files\Eclipse Adoptium\jdk-17.0.11\bin\java.exe
+
+# Maven, nur noetig zum Bauen aus dem Quelltext.
+# Maven 3.6.3 oder neuer; aelter lehnt die verwendeten Plugins ab.
+# Leer lassen, um ./mvnw, den PATH und MAVEN_HOME der Reihe nach zu
+# versuchen. start.bat bricht dann mit einem klaren Text ab, wenn nichts
+# davon existiert - das ist Absicht, ein stilles Scheitern waere schlimmer.
+#maven=C:\Programme\apache-maven-3.9.9\bin\mvn.cmd
+
+# JDK, mit dem Maven uebersetzt. Nur noetig, wenn Java und Maven
+# unterschiedliche JDKs wollen - Maven laeuft mit JAVA_HOME, und genau das
+# ist der Fall, der den Bau ohne diesen Eintrag scheitern laesst.
+# Leer lassen, um JAVA_HOME unangetastet zu lassen.
+#maven-jdk=C:\Program Files\Eclipse Adoptium\jdk-17.0.11

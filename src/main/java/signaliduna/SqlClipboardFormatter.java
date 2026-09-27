@@ -29,7 +29,7 @@ public final class SqlClipboardFormatter extends JFrame {
         }
         // Muss vor dem Erzeugen des Panels passieren, sonst bekommen die
         // Komponenten noch das System-LookAndFeel.
-        FormatterPanel.setzeTheme(Theme.DUNKEL);
+        FormatterPanel.setzeTheme(FormatterPanel.STANDARD);
         SwingUtilities.invokeLater(() -> new SqlClipboardFormatter().setVisible(true));
     }
 }
