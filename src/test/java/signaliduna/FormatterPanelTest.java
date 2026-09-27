@@ -1180,6 +1180,41 @@ class FormatterPanelTest {
                     "auch im hellen Theme bleibt die Beschriftung lesbar");
             assertNotNull(themeButton.getToolTipText());
         }
+
+        @Test
+        @DisplayName("im Normalzustand wird das Fenster neu gepackt")
+        void normalzustand_wird_gepackt() {
+            // Ohne pack() schneidet der Rahmen des neuen LookAndFeel die
+            // Knöpfe ab, das Fenster waere also zu klein.
+            Rectangle bildschirm = new Rectangle(0, 0, 2560, 1440);
+            Rectangle fenster = new Rectangle(700, 100, 900, 600);
+
+            assertTrue(FormatterPanel.gehoertGepackt(false, fenster, bildschirm),
+                    "ein Fenster im Normalzustand muss neu gepackt werden");
+        }
+
+        @Test
+        @DisplayName("ein maximiertes Fenster behaelt seinen Zustand")
+        void maximiertes_fenster_bleibt_maximiert() {
+            Rectangle bildschirm = new Rectangle(0, 0, 2560, 1440);
+            Rectangle fenster = new Rectangle(0, 0, 2560, 1409);
+
+            assertFalse(FormatterPanel.gehoertGepackt(true, fenster, bildschirm),
+                    "pack() wuerde die Maximierung aufheben, also darf es nicht aufrufen");
+        }
+
+        @Test
+        @DisplayName("der Themewechsel laesst ein Fenster im Vollbild stehen")
+        void vollbildfenster_bleibt_stehen() {
+            // Im echten Vollbild gibt es keinen Zustand, den man zuruecksetzen
+            // koennte, und macOS meldet ihn auch nicht. Fuellt das Fenster den
+            // Bildschirm, wird deshalb gar nicht erst gepackt.
+            Rectangle bildschirm = new Rectangle(0, 0, 2560, 1440);
+            Rectangle fenster = new Rectangle(0, 0, 2560, 1440);
+
+            assertFalse(FormatterPanel.gehoertGepackt(false, fenster, bildschirm),
+                    "pack() wuerde das Vollbildfenster auf die Vorzugsgroesse schrumpfen");
+        }
     }
 
     @Nested

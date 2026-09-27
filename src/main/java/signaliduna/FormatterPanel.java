@@ -17,6 +17,9 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.Frame;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -748,14 +751,51 @@ public final class FormatterPanel extends JPanel {
     private void schalteThemeUm() {
         setzeTheme(aktuellesTheme.isDunkel() ? Theme.HELL : Theme.DUNKEL);
         anwendeTheme();
-        // Der Wechsel des LookAndFeel setzt Rahmen und Schriften der
-        // Swing-Komponenten zurueck; die eigenen Farben sind bereits gesetzt,
-        // die Standardwerte der Fremdkomponenten muessen aber neu geholt werden.
+        // Der Wechsel des LookAndFeel aendert Rahmen und Schriften der
+        // Fremdkomponenten, das Fenster muss im Normalzustand also neu
+        // gepackt werden - sonst schneidet der Rahmen die Knöpfe ab.
         Window fenster = SwingUtilities.getWindowAncestor(this);
-        if (fenster != null) {
+        if (fenster != null && gehoertGepackt(maximiert(fenster), fenster.getBounds(), bildschirm())) {
             fenster.pack();
         }
         repaint();
+    }
+
+    /**
+     * Nur im Normalzustand packen. {@code pack()} nimmt dem Fenster seine
+     * Groesse und seine Lage: es setzt beide auf die Vorzugsgroesse und
+     * rueckt es nach oben links. Ein maximiertes Fenster verliert dabei
+     * seinen Zustand, und aus einem Fenster im echten Vollbild wird ein
+     * kleines oben links - es gibt keine Moeglichkeit, das zurueckzuholen.
+     *
+     * <p>Beide Faelle werden ueber die Fenstergroesse erkannt, weil der
+     * Vollbildzustand selbst nicht abfragbar ist: macOS kennt ihn nur intern.
+     * Ein maximiertes Fenster meldet ihn ueber {@code getExtendedState()}, ein
+     * Fenster im echten Vollbild darueber, dass es den Bildschirm fuellt.
+     */
+    static boolean gehoertGepackt(boolean maximiert, Rectangle fensterRahmen, Rectangle bildschirmRahmen) {
+        return !maximiert && !bildschirmRahmen.equals(fensterRahmen);
+    }
+
+    /** Meldet, ob das Fenster maximiert oder in den Vollbildmodus geblendet ist. */
+    private static boolean maximiert(Window fenster) {
+        if (fenster instanceof Frame) {
+            int zustand = ((Frame) fenster).getExtendedState();
+            if ((zustand & Frame.MAXIMIZED_BOTH) != 0) {
+                return true;
+            }
+        }
+        return bildschirm().equals(fenster.getBounds());
+    }
+
+    /** Das umschliessende Rechteck aller Bildschirme. */
+    private static Rectangle bildschirm() {
+        Rectangle gesamt = null;
+        for (GraphicsDevice geraet : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            Rectangle bild = geraet.getDefaultConfiguration().getBounds();
+            gesamt = gesamt == null ? bild : gesamt.union(bild);
+        }
+        return gesamt == null ? new Rectangle() : gesamt;
     }
 
     /**
